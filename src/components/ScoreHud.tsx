@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center' },
   recordRow: { flexDirection: 'row', alignItems: 'center' },
   label: { color: '#94a3b8', fontSize: 10, letterSpacing: 2, fontWeight: '800' },
-  title: { color: NEON.cyan, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  title: { color: NEON.cyan, fontSize: 9.5, fontWeight: '900', letterSpacing: 1 },
   chip: {
     marginTop: 6,
     backgroundColor: 'rgba(148,163,184,0.14)',
