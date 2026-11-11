@@ -95,7 +95,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const have = (id: string) => profile?.inventory[id] ?? 0;
 
   // Space taken by HUD, tray, power-ups and footer; the battle scoreboard needs extra room.
-  const reserve = battle ? 420 : 340;
+  const reserve = battle ? 440 : 360;
   const boardSize = Math.max(200, Math.min(width - 32, 400, height - reserve));
   const cell = boardSize / N;
   const slotW = boardSize / GAME.PIECES_PER_DEAL;
@@ -104,11 +104,13 @@ export function GameScreen({ mode, onExit, battle }: Props) {
 
   const boardRef = useRef<ViewHandle>(null);
   const rootRef = useRef<ViewHandle>(null);
+  const originsReady = useRef(Promise.resolve());
   const origins = useRef<{ board: Origin; root: Origin }>({
     board: { x: 0, y: 0 },
     root: { x: 0, y: 0 },
   });
   const [drag, setDrag] = useState<Drag | null>(null);
+  const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
 
   useEffect(() => {
     void initAds();
@@ -130,6 +132,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   }, [mode, status, finalScore, reportRun]);
   const restartGame = () => {
     gameId.current = Date.now();
+    setSelectedPiece(null);
     restart();
   };
   const exit = () => {
@@ -158,7 +161,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   useEffect(() => {
     if (!state || !onLocalUpdate.current) return;
     onLocalUpdate.current({ score: state.score, combo: state.combo, grid: state.grid, over: state.status === 'over' });
-  }, [state?.grid, state?.score, state?.combo, state?.status]);
+  }, [state]);
 
   /** Drop position -> snapped board anchor (null if nothing legal nearby). */
   const targetFor = (index: number, x: number, y: number) => {
@@ -174,19 +177,30 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const handlers = useRef({
     grant: (_i: number, _x: number, _y: number) => {},
     move: (_i: number, _x: number, _y: number) => {},
-    release: (_i: number, _x: number, _y: number) => {},
+    release: (_i: number, _x: number, _y: number, _startX: number, _startY: number) => {},
   });
   handlers.current = {
-    grant: async (index, x, y) => {
+    grant: (index, x, y) => {
       setDrag({ index, x, y });
-      const [board, root] = await Promise.all([measure(boardRef.current), measure(rootRef.current)]);
-      origins.current = { board, root };
-      setDrag((d) => (d ? { ...d } : d));
+      setSelectedPiece(null);
+      originsReady.current = Promise.all([measure(boardRef.current), measure(rootRef.current)]).then(
+        ([board, root]) => {
+          origins.current = { board, root };
+          setDrag((d) => (d ? { ...d } : d));
+        },
+      );
     },
     move: (index, x, y) => setDrag((d) => (d ? { index, x, y } : d)),
-    release: (index, x, y) => {
-      const t = targetFor(index, x, y);
-      if (t) place(index, t.r, t.c);
+    release: async (index, x, y, startX, startY) => {
+      await originsReady.current;
+      const moved = Math.hypot(x - startX, y - startY) >= 12;
+      const t = moved ? targetFor(index, x, y) : null;
+      if (t) {
+        place(index, t.r, t.c);
+        setSelectedPiece(null);
+      } else {
+        setSelectedPiece(index);
+      }
       setDrag(null);
     },
   };
@@ -200,7 +214,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
           onPanResponderGrant: (_e, g) => handlers.current.grant(i, g.x0, g.y0),
           onPanResponderMove: (_e, g) => handlers.current.move(i, g.moveX, g.moveY),
           onPanResponderRelease: (_e, g) =>
-            handlers.current.release(i, g.moveX || g.x0, g.moveY || g.y0),
+            handlers.current.release(i, g.moveX, g.moveY, g.x0, g.y0),
           onPanResponderTerminate: () => setDrag(null),
         }),
       ),
@@ -211,6 +225,21 @@ export function GameScreen({ mode, onExit, battle }: Props) {
 
   const dragged = drag ? state.pieces[drag.index] : null;
   const target = drag ? targetFor(drag.index, drag.x, drag.y) : null;
+  const placeSelectedAt = (x: number, y: number) => {
+    if (selectedPiece === null || state.status !== 'playing') return;
+    const piece = state.pieces[selectedPiece];
+    if (!piece) return;
+    const { rows, cols } = pieceDims(piece);
+    const placement = snapPlacement(
+      state.grid,
+      piece,
+      Math.round(y / cell - rows / 2),
+      Math.round(x / cell - cols / 2),
+    );
+    if (!placement) return;
+    place(selectedPiece, placement.r, placement.c);
+    setSelectedPiece(null);
+  };
   const ghost = new Set<string>();
   // Rows/columns that would be completed by the current drop
   const previewLines = { rows: new Set<number>(), cols: new Set<number>() };
@@ -249,7 +278,13 @@ export function GameScreen({ mode, onExit, battle }: Props) {
           state.combo >= 2 && styles.boardHot,
         ]}
       >
-        <View style={{ width: boardSize, height: boardSize }}>
+        <View
+          style={{ width: boardSize, height: boardSize }}
+          onStartShouldSetResponder={() => selectedPiece !== null}
+          onResponderRelease={(event) =>
+            placeSelectedAt(event.nativeEvent.locationX, event.nativeEvent.locationY)
+          }
+        >
           {state.grid.map((row, r) => (
             <View key={r} style={styles.row}>
               {row.map((v, c) => {
@@ -279,11 +314,20 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         </View>
       </View>
 
+      <Text style={styles.hint}>
+        {selectedPiece === null
+          ? 'Arraste uma peça ou toque nela e depois no tabuleiro'
+          : 'Peça selecionada: toque em uma casa livre'}
+      </Text>
       <View style={[styles.tray, { width: boardSize + 8 }]}>
         {state.pieces.map((piece, i) => (
           <View
             key={i}
-            style={[styles.slot, { width: slotW, height: trayCell * 5 + 12 }]}
+            style={[
+              styles.slot,
+              { width: slotW, height: trayCell * 5 + 12 },
+              selectedPiece === i && styles.slotSelected,
+            ]}
             {...(piece ? responders[i].panHandlers : {})}
           >
             {piece && (
@@ -413,6 +457,7 @@ const styles = StyleSheet.create({
   },
   cellAlt: { backgroundColor: '#1b2940' },
   cellLine: { backgroundColor: 'rgba(250,204,21,0.3)' },
+  hint: { color: COLORS.muted, fontSize: 11, marginTop: 8, textAlign: 'center' },
   powerBar: { flexDirection: 'row', gap: 12, marginTop: 12 },
   power: {
     flexDirection: 'row',
@@ -441,6 +486,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   slot: { alignItems: 'center', justifyContent: 'center' },
+  slotSelected: {
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+    borderRadius: 12,
+    backgroundColor: 'rgba(56,189,248,0.12)',
+  },
   dragLayer: {
     position: 'absolute',
     transform: [{ scale: 1.06 }],

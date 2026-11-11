@@ -119,17 +119,19 @@ const pickWeighted = (cands: Coord[][], fill: number): Coord[] => {
   return cands[cands.length - 1];
 };
 
-/** True if the pieces can all be placed one after another in some order (ignoring line clears). */
-const solvable = (grid: Grid, pieces: Piece[]): boolean => {
+/** Searches for an ordering in which all pieces fit, stopping at the shared node budget. */
+const solvable = (grid: Grid, pieces: Piece[], budget: { remaining: number }): boolean => {
   if (pieces.length === 0) return true;
   for (let i = 0; i < pieces.length; i++) {
     const rest = pieces.filter((_, j) => j !== i);
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
+        if (budget.remaining === 0) return false;
         if (!canPlace(grid, pieces[i], r, c)) continue;
+        budget.remaining--;
         const next = grid.map((row) => [...row]);
         pieces[i].cells.forEach(([dr, dc]) => (next[r + dr][c + dc] = 0));
-        if (solvable(next, rest)) return true;
+        if (solvable(next, rest, budget)) return true;
       }
     }
   }
@@ -138,7 +140,7 @@ const solvable = (grid: Grid, pieces: Piece[]): boolean => {
 
 /**
  * Deals pieces that fit the current board: every piece has a spot, shapes are
- * weighted by size/fill, and (when possible) the whole set can be played out.
+ * weighted by size/fill, and tries a bounded search for a playable ordering.
  */
 export const dealPieces = (grid: Grid): Piece[] => {
   const fill = fillRatio(grid);
@@ -158,8 +160,8 @@ export const dealPieces = (grid: Grid): Piece[] => {
   };
 
   let best = build();
-  for (let i = 0; i < 40; i++) {
-    if (solvable(grid, best)) return best;
+  for (let i = 0; i < 8; i++) {
+    if (solvable(grid, best, { remaining: 2500 })) return best;
     best = build();
   }
   return best;
