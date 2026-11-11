@@ -86,6 +86,34 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Ações estáveis (mesma identidade entre renders): evita que efeitos que dependem delas disparem em loop.
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  const setLiveScore = useCallback((sc: number) => {
+    liveScore.current = sc;
+  }, []);
+  const reportRun = useCallback((runId: string, score: number) => run(() => backend.reportRun(runId, score)), [run]);
+  const purchase = useCallback((itemId: string, qty?: number) => run(() => backend.purchase(itemId, qty)), [run]);
+  const simulatedIap = useCallback((sku: string) => run(() => backend.simulatedIap(sku)), [run]);
+  const equipBoard = useCallback((boardId: string) => run(() => backend.equipBoard(boardId)), [run]);
+  const consume = useCallback((itemId: string) => run(() => backend.consume(itemId)), [run]);
+  const rename = useCallback((name: string) => run(() => backend.setName(name)), [run]);
+  const addFriend = useCallback(async (code: string) => {
+    try {
+      setFriends(await backend.addFriend(code));
+      return null;
+    } catch (e) {
+      return messageOf(e);
+    }
+  }, []);
+  const removeFriend = useCallback(async (code: string) => {
+    try {
+      setFriends(await backend.removeFriend(code));
+      return null;
+    } catch (e) {
+      return messageOf(e);
+    }
+  }, []);
+
   const value = useMemo<ProfileCtx>(
     () => ({
       profile,
@@ -93,35 +121,19 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       mode: backend.mode,
       loading,
       loadError,
-      reload: () => setAttempt((n) => n + 1),
-      setLiveScore: (s) => {
-        liveScore.current = s;
-      },
-      reportRun: (runId, score) => run(() => backend.reportRun(runId, score)),
-      purchase: (itemId, qty) => run(() => backend.purchase(itemId, qty)),
-      simulatedIap: (sku) => run(() => backend.simulatedIap(sku)),
-      equipBoard: (boardId) => run(() => backend.equipBoard(boardId)),
-      consume: (itemId) => run(() => backend.consume(itemId)),
-      rename: (name) => run(() => backend.setName(name)),
+      reload,
+      setLiveScore,
+      reportRun,
+      purchase,
+      simulatedIap,
+      equipBoard,
+      consume,
+      rename,
       refreshFriends,
-      addFriend: async (code) => {
-        try {
-          setFriends(await backend.addFriend(code));
-          return null;
-        } catch (e) {
-          return messageOf(e);
-        }
-      },
-      removeFriend: async (code) => {
-        try {
-          setFriends(await backend.removeFriend(code));
-          return null;
-        } catch (e) {
-          return messageOf(e);
-        }
-      },
+      addFriend,
+      removeFriend,
     }),
-    [profile, friends, loading, loadError, run, refreshFriends],
+    [profile, friends, loading, loadError, reload, setLiveScore, reportRun, purchase, simulatedIap, equipBoard, consume, rename, refreshFriends, addFriend, removeFriend],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

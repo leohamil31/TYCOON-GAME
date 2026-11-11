@@ -1,31 +1,40 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Easing,
   PanResponder,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
 } from 'react-native';
-import { ThemedBackdrop } from '../components/ThemedBackdrop';
-import { ClearEffects } from '../components/ClearEffects';
-import { GameOverModal } from '../components/GameOverModal';
+import { ClearEffects, FloatScore } from '../components/ClearEffects';
+import { GameOverModal, type RescueOption } from '../components/GameOverModal';
 import { LiveScoreboard } from '../components/LiveScoreboard';
-import { Block, PieceView } from '../components/Piece';
+import { Block, PopIn, PieceView, TrayPiece } from '../components/Piece';
+import { PowerBar, type PowerChip } from '../components/PowerBar';
 import { ScoreHud } from '../components/ScoreHud';
-import { COLORS, GAME } from '../constants';
-import { pieceDims, snapPlacement } from '../game/engine';
+import { ShopModal } from '../components/ShopModal';
+import { ThemedBackdrop } from '../components/ThemedBackdrop';
+import { Toast, type ToastMsg } from '../components/Toast';
+import { BLOCK_COLORS, GAME } from '../constants';
+import { centerBlocks, fillOf, pieceDims, pieceFits, snapPlacement } from '../game/engine';
 import { initAds } from '../services/ads';
 import { buyRemoveAds, disposeIap, initIap, restorePurchases } from '../services/iap';
+import { BOOST_MOVES, coinsForScore, itemById, type PowerupId } from '../shop/catalog';
 import { themeFor } from '../shop/themes';
 import { useBlocks, type GameMode } from '../state/useBlocks';
 import { useProfile } from '../state/useProfile';
 import { addScore } from '../storage';
+import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER } from '../theme';
 import type { PlayerView, Snapshot } from '../types';
 
 const N = GAME.GRID_SIZE;
-const FRAME = 4; // border + centering offset between the board frame and the grid
+const PAD = 4; // borda + respiro entre a moldura e a grade
 
 interface Drag {
   index: number;
@@ -41,43 +50,15 @@ type ViewHandle = React.ComponentRef<typeof View>;
 const measure = (view: ViewHandle | null) =>
   new Promise<Origin>((resolve) => {
     if (!view) return resolve({ x: 0, y: 0 });
-    view.measureInWindow((x, y) => resolve({ x, y }));
+    view.measureInWindow((x: number, y: number) => resolve({ x, y }));
   });
-
-function PowerButton({
-  icon,
-  label,
-  count,
-  active,
-  disabled,
-  onPress,
-}: {
-  icon: string;
-  label: string;
-  count: number;
-  active?: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      style={[styles.power, active && styles.powerOn, disabled && !active && styles.powerOff]}
-    >
-      <Text style={styles.powerText}>
-        {icon} {label}
-      </Text>
-      <Text style={styles.powerCount}>{count}</Text>
-    </Pressable>
-  );
-}
 
 export interface BattleProps {
   me: PlayerView;
   opp: PlayerView | null;
   timeLeft: number;
+  /** Contagem regressiva ou partida encerrada: o tabuleiro não aceita jogadas. */
+  locked: boolean;
   onLocalUpdate: (s: Snapshot) => void;
 }
 
@@ -87,31 +68,103 @@ interface Props {
   battle?: BattleProps;
 }
 
+const TONES: Record<PowerupId, string> = {
+  boost_x2: NEON.gold,
+  bomb: '#fb923c',
+  reroll: NEON.cyan,
+  undo: NEON.violet,
+  shield: NEON.green,
+};
+const SHORT: Record<PowerupId, string> = { boost_x2: 'x2', bomb: 'Bomba', reroll: 'Nova mão', undo: 'Desfazer', shield: 'Escudo' };
+
+/** Laço 0→1→0 enquanto `on` for verdadeiro (pulsos de alerta/brilho). */
+function usePulse(on: boolean, duration: number) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!on) {
+      v.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(v, { toValue: 0, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [on, duration, v]);
+  return v;
+}
+
 export function GameScreen({ mode, onExit, battle }: Props) {
-  const { width, height } = useWindowDimensions();
-  const { state, fx, boost, place, restart, revive, shield, bomb, activateBoost, setAdsRemoved } = useBlocks(mode);
+  const win = useWindowDimensions();
+  const [area, setArea] = useState<{ w: number; h: number } | null>(null);
+  const W = area?.w ?? win.width;
+  const H = area?.h ?? win.height;
+  const locked = !!battle?.locked;
+
+  const {
+    state,
+    fx,
+    placed,
+    boost,
+    canUndo,
+    startBest,
+    place,
+    restart,
+    revive,
+    shield,
+    bomb,
+    reroll,
+    undoMove,
+    activateBoost,
+    setAdsRemoved,
+  } = useBlocks(mode, locked);
   const { profile, consume, reportRun, setLiveScore } = useProfile();
   const theme = themeFor(profile?.equipped);
   const have = (id: string) => profile?.inventory[id] ?? 0;
 
-  // Space taken by HUD, tray, power-ups and footer; the battle scoreboard needs extra room.
-  const reserve = battle ? 440 : 360;
-  const boardSize = Math.max(200, Math.min(width - 32, 400, height - reserve));
+  const [shopOpen, setShopOpen] = useState(false);
+  const [toast, setToast] = useState<ToastMsg | null>(null);
+  const toastId = useRef(0);
+  const say = useCallback((text: string, kind: ToastMsg['kind'] = 'info', icon?: string) => {
+    setToast({ id: ++toastId.current, text, kind, icon });
+  }, []);
+
+  // ------------------------------------------------------------- layout responsivo
+  const showFooter = mode === 'solo' && !!state && !state.adsRemoved;
+  const landscape = W >= 760 && W > H * 1.2;
+  const hudH = 84; // ScoreHud: 64 + margens
+  const boardBox = PAD * 2 + 10; // moldura + borda inferior 3D
+  let boardSize: number;
+  let sideW: number;
+  const footerH = showFooter ? 36 : 0;
+  if (landscape) {
+    boardSize = Math.min(H - hudH - footerH - boardBox - 28, W * 0.5, 620);
+    sideW = Math.min(440, W - boardSize - boardBox - 72);
+  } else {
+    const scoreboardH = battle ? 146 : 0;
+    const powerH = 92; // botões + espaçamento
+    const hintH = 32;
+    const avail = H - hudH - scoreboardH - powerH - footerH - hintH - boardBox - 12;
+    // A bandeja ocupa ~32% do lado do tabuleiro (peças com 5 casas a ~64% do tamanho da casa).
+    boardSize = Math.min(W - 24 - boardBox, 560, (avail - 20) / 1.32);
+    sideW = boardSize + boardBox;
+  }
+  boardSize = Math.floor(Math.max(200, boardSize));
   const cell = boardSize / N;
-  const slotW = boardSize / GAME.PIECES_PER_DEAL;
-  const trayCell = Math.min(cell * 0.66, slotW / 5.2);
-  const lift = Math.max(56, cell * 1.6); // keeps the dragged piece visible above the finger
+  const slotW = (landscape ? sideW : boardSize + boardBox) / GAME.PIECES_PER_DEAL;
+  const trayCell = Math.min(cell * (landscape ? 0.72 : 0.64), (slotW - 8) / 5.2);
+  const trayH = trayCell * 5 + 16;
+  const lift = Math.max(56, cell * 1.6); // mantém a peça arrastada visível acima do dedo
 
-  const boardRef = useRef<ViewHandle>(null);
-  const rootRef = useRef<ViewHandle>(null);
-  const originsReady = useRef(Promise.resolve());
-  const origins = useRef<{ board: Origin; root: Origin }>({
-    board: { x: 0, y: 0 },
-    root: { x: 0, y: 0 },
-  });
-  const [drag, setDrag] = useState<Drag | null>(null);
-  const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
+  const onRootLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setArea((a) => (a && a.w === width && a.h === height ? a : { w: width, h: height }));
+  };
 
+  // ------------------------------------------------------------- serviços
   useEffect(() => {
     void initAds();
     void initIap({ onRemoveAdsOwned: setAdsRemoved, onError: (m) => console.warn(m) });
@@ -120,16 +173,20 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     };
   }, [setAdsRemoved]);
 
-  // Solo: record finished runs on the local leaderboard (one entry per game, keeps the best of revives).
+  // Solo: registra a partida no ranking local e credita moedas (uma vez por pontuação).
   const gameId = useRef(Date.now());
+  const reported = useRef('');
   const status = state?.status;
   const finalScore = state?.score ?? 0;
   useEffect(() => {
-    if (mode === 'solo' && status === 'over') {
-      void addScore(gameId.current, finalScore);
-      void reportRun(String(gameId.current), finalScore);
-    }
+    if (mode !== 'solo' || status !== 'over') return;
+    const key = `${gameId.current}:${finalScore}`;
+    if (reported.current === key) return;
+    reported.current = key;
+    void addScore(gameId.current, finalScore);
+    void reportRun(String(gameId.current), finalScore);
   }, [mode, status, finalScore, reportRun]);
+
   const restartGame = () => {
     gameId.current = Date.now();
     setSelectedPiece(null);
@@ -143,19 +200,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   // Amigos veem a pontuação da partida em andamento.
   useEffect(() => {
     setLiveScore(state?.score ?? 0);
-    return () => setLiveScore(0);
   }, [state?.score, setLiveScore]);
+  useEffect(() => () => setLiveScore(0), [setLiveScore]);
 
-  const applyItem = async (id: 'boost_x2' | 'bomb') => {
-    if (await consume(id)) return;
-    if (id === 'boost_x2') activateBoost();
-    else bomb();
-  };
-  const applyShield = async () => {
-    if (!(await consume('shield'))) shield();
-  };
-
-  // Battle: broadcast every change to the opponent.
+  // Batalha: envia cada mudança ao adversário.
   const onLocalUpdate = useRef(battle?.onLocalUpdate);
   onLocalUpdate.current = battle?.onLocalUpdate;
   useEffect(() => {
@@ -163,32 +211,104 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     onLocalUpdate.current({ score: state.score, combo: state.combo, grid: state.grid, over: state.status === 'over' });
   }, [state]);
 
-  /** Drop position -> snapped board anchor (null if nothing legal nearby). */
+  // ------------------------------------------------------------- power-ups (solo e online)
+  const busy = useRef(false);
+  const applyItem = async (id: string) => {
+    const s = state;
+    const item = itemById(id);
+    if (!s || !item || busy.current) return;
+    if (locked) return say('Espere a partida começar!', 'info', '⏳');
+    if (have(id) <= 0) {
+      setShopOpen(true);
+      return;
+    }
+    // Valida antes de gastar o item.
+    const why =
+      id === 'boost_x2' && boost > 0
+        ? 'O x2 já está ativo.'
+        : id === 'bomb' && centerBlocks(s.grid).length === 0
+          ? 'O centro do tabuleiro já está vazio.'
+          : id === 'undo' && !canUndo
+            ? 'Nada para desfazer agora.'
+            : id === 'shield' && s.status !== 'over'
+              ? 'O escudo é usado quando você fica sem jogadas.'
+              : null;
+    if (why) return say(why, 'info', item.icon);
+
+    busy.current = true;
+    const err = await consume(id);
+    busy.current = false;
+    if (err) return say(err, 'error', '⚠️');
+    setSelectedPiece(null);
+    if (id === 'boost_x2') {
+      activateBoost();
+      say(`Pontos em dobro nas próximas ${BOOST_MOVES} jogadas!`, 'ok', '⚡');
+    } else if (id === 'bomb') {
+      bomb();
+    } else if (id === 'reroll') {
+      reroll();
+      say('Peças novas na bandeja!', 'ok', '🔄');
+    } else if (id === 'undo') {
+      undoMove();
+      say('Jogada desfeita.', 'ok', '↩️');
+    } else if (id === 'shield') {
+      shield();
+      say('Escudo ativado! Espaço liberado.', 'ok', '🛡️');
+    }
+  };
+
+  const ids: PowerupId[] = ['boost_x2', 'bomb', 'reroll', 'undo'];
+  const chips: PowerChip[] = ids.map((id) => ({
+    id,
+    icon: itemById(id)?.icon ?? '?',
+    label: SHORT[id],
+    count: have(id),
+    tone: TONES[id],
+    active: id === 'boost_x2' && boost > 0,
+    activeText: id === 'boost_x2' && boost > 0 ? `${boost}` : undefined,
+    disabled: locked || (id === 'undo' && !canUndo),
+  }));
+  const rescues: RescueOption[] = (['shield', 'reroll', 'bomb', 'undo'] as PowerupId[])
+    .filter((id) => id !== 'undo' || canUndo)
+    .filter((id) => id !== 'bomb' || (state ? centerBlocks(state.grid).length > 0 : false))
+    .map((id) => ({ id, icon: itemById(id)?.icon ?? '?', label: SHORT[id], count: have(id) }));
+
+  // ------------------------------------------------------------- arrastar e soltar
+  const gridRef = useRef<ViewHandle>(null);
+  const rootRef = useRef<ViewHandle>(null);
+  const originsReady = useRef(Promise.resolve());
+  const origins = useRef<{ board: Origin; root: Origin }>({ board: { x: 0, y: 0 }, root: { x: 0, y: 0 } });
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
+
+  const remeasure = () => {
+    originsReady.current = Promise.all([measure(gridRef.current), measure(rootRef.current)]).then(([board, root]) => {
+      origins.current = { board, root };
+    });
+    return originsReady.current;
+  };
+
+  /** Posição do dedo -> âncora no tabuleiro (com "ímã" de 1 casa). */
   const targetFor = (index: number, x: number, y: number) => {
     const piece = state?.pieces[index];
     if (!state || !piece) return null;
     const { rows, cols } = pieceDims(piece);
-    const left = x - (cols * cell) / 2 - origins.current.board.x - FRAME;
-    const top = y - (rows * cell) / 2 - lift - origins.current.board.y - FRAME;
+    const left = x - (cols * cell) / 2 - origins.current.board.x;
+    const top = y - (rows * cell) / 2 - lift - origins.current.board.y;
     return snapPlacement(state.grid, piece, Math.round(top / cell), Math.round(left / cell));
   };
 
-  // PanResponders are created once; they read the latest handlers through this ref.
+  // Os PanResponders são criados uma vez; leem os handlers mais recentes por esta ref.
   const handlers = useRef({
     grant: (_i: number, _x: number, _y: number) => {},
     move: (_i: number, _x: number, _y: number) => {},
-    release: (_i: number, _x: number, _y: number, _startX: number, _startY: number) => {},
+    release: (_i: number, _x: number, _y: number, _sx: number, _sy: number) => {},
   });
   handlers.current = {
     grant: (index, x, y) => {
+      if (locked || state?.status !== 'playing') return;
       setDrag({ index, x, y });
-      setSelectedPiece(null);
-      originsReady.current = Promise.all([measure(boardRef.current), measure(rootRef.current)]).then(
-        ([board, root]) => {
-          origins.current = { board, root };
-          setDrag((d) => (d ? { ...d } : d));
-        },
-      );
+      void remeasure().then(() => setDrag((d) => (d ? { ...d } : d)));
     },
     move: (index, x, y) => setDrag((d) => (d ? { index, x, y } : d)),
     release: async (index, x, y, startX, startY) => {
@@ -198,8 +318,9 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       if (t) {
         place(index, t.r, t.c);
         setSelectedPiece(null);
-      } else {
-        setSelectedPiece(index);
+      } else if (!moved && !locked) {
+        // Toque simples: seleciona (ou desmarca) a peça para colocar tocando no tabuleiro.
+        setSelectedPiece((cur) => (cur === index ? null : index));
       }
       setDrag(null);
     },
@@ -211,37 +332,58 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         PanResponder.create({
           onStartShouldSetPanResponder: () => true,
           onPanResponderTerminationRequest: () => false,
-          onPanResponderGrant: (_e, g) => handlers.current.grant(i, g.x0, g.y0),
-          onPanResponderMove: (_e, g) => handlers.current.move(i, g.moveX, g.moveY),
-          onPanResponderRelease: (_e, g) =>
-            handlers.current.release(i, g.moveX, g.moveY, g.x0, g.y0),
+          onPanResponderGrant: (_e: unknown, g: { x0: number; y0: number }) => handlers.current.grant(i, g.x0, g.y0),
+          onPanResponderMove: (_e: unknown, g: { moveX: number; moveY: number }) => handlers.current.move(i, g.moveX, g.moveY),
+          onPanResponderRelease: (_e: unknown, g: { moveX: number; moveY: number; x0: number; y0: number }) =>
+            handlers.current.release(i, g.moveX || g.x0, g.moveY || g.y0, g.x0, g.y0),
           onPanResponderTerminate: () => setDrag(null),
         }),
       ),
     [],
   );
 
-  if (!state) return <View style={styles.root} />;
+  // Toque no tabuleiro com peça selecionada. Usa pageX/pageY (locationX é relativo ao filho tocado na web).
+  const tapBoard = async (e: GestureResponderEvent) => {
+    const { pageX, pageY } = e.nativeEvent;
+    if (selectedPiece === null || !state || state.status !== 'playing' || locked) return;
+    const piece = state.pieces[selectedPiece];
+    if (!piece) return setSelectedPiece(null);
+    await remeasure();
+    const x = pageX - origins.current.board.x;
+    const y = pageY - origins.current.board.y;
+    const { rows, cols } = pieceDims(piece);
+    const spot = snapPlacement(state.grid, piece, Math.round(y / cell - rows / 2), Math.round(x / cell - cols / 2));
+    if (!spot) return say('Não cabe aí. Tente outra casa.', 'info', '🚫');
+    place(selectedPiece, spot.r, spot.c);
+    setSelectedPiece(null);
+  };
+
+  // ------------------------------------------------------------- efeitos de tela
+  const shake = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!fx) return;
+    const power = fx.kind === 'bomb' ? 9 : fx.lines >= 2 ? 3 + fx.lines * 1.5 : 0;
+    if (!power) return;
+    shake.setValue(0);
+    Animated.sequence(
+      [1, -0.8, 0.6, -0.4, 0.2, 0].map((k) =>
+        Animated.timing(shake, { toValue: k * power, duration: 45, useNativeDriver: USE_NATIVE_DRIVER }),
+      ),
+    ).start();
+  }, [fx, shake]);
+
+  const fill = state ? fillOf(state.grid) : 0;
+  const danger = !!state && state.status === 'playing' && fill >= 0.68;
+  const dangerPulse = usePulse(danger, 700);
+  const hintPulse = usePulse(!!drag, 380);
+  const boostPulse = usePulse(boost > 0, 800);
+
+  if (!state) return <View ref={rootRef} style={styles.root} onLayout={onRootLayout} />;
 
   const dragged = drag ? state.pieces[drag.index] : null;
   const target = drag ? targetFor(drag.index, drag.x, drag.y) : null;
-  const placeSelectedAt = (x: number, y: number) => {
-    if (selectedPiece === null || state.status !== 'playing') return;
-    const piece = state.pieces[selectedPiece];
-    if (!piece) return;
-    const { rows, cols } = pieceDims(piece);
-    const placement = snapPlacement(
-      state.grid,
-      piece,
-      Math.round(y / cell - rows / 2),
-      Math.round(x / cell - cols / 2),
-    );
-    if (!placement) return;
-    place(selectedPiece, placement.r, placement.c);
-    setSelectedPiece(null);
-  };
   const ghost = new Set<string>();
-  // Rows/columns that would be completed by the current drop
+  // Linhas/colunas que a jogada atual completaria
   const previewLines = { rows: new Set<number>(), cols: new Set<number>() };
   if (dragged && target) {
     const sim = state.grid.map((row) => [...row]);
@@ -254,90 +396,198 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       if (sim.every((row) => row[i] !== null)) previewLines.cols.add(i);
     }
   }
+  const poppedCells = new Set(placed ? placed.cells.map(([r, c]) => `${r},${c}`) : []);
+  const combo = state.combo;
+  const frameTone = boost > 0 ? NEON.gold : combo >= 2 ? '#fb923c' : theme.frameTop;
+  const anySelected = selectedPiece !== null && !!state.pieces[selectedPiece];
 
-  return (
-    <View ref={rootRef} style={styles.root} collapsable={false}>
-      <ThemedBackdrop themeId={theme.id} />
-
-      <ScoreHud score={state.score} best={state.best} combo={state.combo} coins={profile?.coins} onBack={exit} />
-      {battle && <LiveScoreboard me={battle.me} opp={battle.opp} timeLeft={battle.timeLeft} />}
-
+  // ------------------------------------------------------------- peças da UI
+  const board = (
+    <Animated.View style={{ transform: [{ translateX: shake }] }}>
       <View
-        ref={boardRef}
-        collapsable={false}
         style={[
           styles.board,
+          gradient(160, [alpha(theme.frameSide, 0.35), theme.board, theme.board], theme.board),
           {
-            width: boardSize + 8,
-            height: boardSize + 8 + 7,
-            backgroundColor: theme.board,
-            borderTopColor: theme.frameTop,
-            borderLeftColor: theme.frameSide,
-            shadowColor: theme.glow,
+            padding: PAD - 2,
+            borderTopColor: frameTone,
+            borderLeftColor: alpha(frameTone, 0.6),
+            borderRightColor: alpha(frameTone, 0.35),
+            shadowColor: combo >= 2 || boost > 0 ? frameTone : theme.glow,
+            shadowOpacity: 0.45 + Math.min(0.45, combo * 0.1),
+            shadowRadius: 18 + Math.min(20, combo * 4),
           },
-          state.combo >= 2 && styles.boardHot,
         ]}
       >
         <View
+          ref={gridRef}
+          collapsable={false}
           style={{ width: boardSize, height: boardSize }}
-          onStartShouldSetResponder={() => selectedPiece !== null}
-          onResponderRelease={(event) =>
-            placeSelectedAt(event.nativeEvent.locationX, event.nativeEvent.locationY)
-          }
+          onStartShouldSetResponder={() => anySelected}
+          onResponderRelease={tapBoard}
         >
           {state.grid.map((row, r) => (
             <View key={r} style={styles.row}>
               {row.map((v, c) => {
-                const isGhost = ghost.has(`${r},${c}`);
+                const k = `${r},${c}`;
+                const isGhost = ghost.has(k);
                 const lineHit = previewLines.rows.has(r) || previewLines.cols.has(c);
                 return (
-                  <View
-                    key={c}
-                    style={[
-                      styles.cell,
-                      { backgroundColor: (r + c) % 2 === 0 ? theme.cellAlt : theme.cell },
-                      lineHit && styles.cellLine,
-                      { width: cell, height: cell },
-                    ]}
-                  >
+                  <View key={c} style={{ width: cell, height: cell }}>
+                    <View
+                      style={[
+                        styles.slotCell,
+                        {
+                          borderRadius: cell * 0.2,
+                          backgroundColor: (r + c) % 2 === 0 ? theme.cellAlt : theme.cell,
+                        },
+                      ]}
+                    />
                     {v !== null ? (
-                      <Block color={v} size={cell} />
+                      poppedCells.has(k) && placed ? (
+                        <PopIn key={`p${placed.id}`} size={cell}>
+                          <Block color={v} size={cell} />
+                        </PopIn>
+                      ) : (
+                        <Block color={v} size={cell} />
+                      )
                     ) : isGhost && dragged ? (
                       <Block color={dragged.color} size={cell} ghost />
                     ) : null}
+                    {lineHit && (
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.lineHit,
+                          {
+                            borderRadius: cell * 0.22,
+                            borderColor: dragged ? BLOCK_COLORS[dragged.color] : NEON.gold,
+                            opacity: hintPulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }),
+                          },
+                        ]}
+                      />
+                    )}
                   </View>
                 );
               })}
             </View>
           ))}
+          <FloatScore placed={fx && placed && fx.id === placed.id ? null : placed} cell={cell} />
           <ClearEffects fx={fx} cell={cell} boardSize={boardSize} />
         </View>
-      </View>
 
-      <Text style={styles.hint}>
-        {selectedPiece === null
-          ? 'Arraste uma peça ou toque nela e depois no tabuleiro'
-          : 'Peça selecionada: toque em uma casa livre'}
-      </Text>
-      <View style={[styles.tray, { width: boardSize + 8 }]}>
-        {state.pieces.map((piece, i) => (
+        {danger && (
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.danger, { opacity: dangerPulse.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.7] }) }]}
+          />
+        )}
+        {boost > 0 && (
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.boostTag, { transform: [{ scale: boostPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }] }]}
+          >
+            <Text style={styles.boostText}>⚡ x2 · {boost}</Text>
+          </Animated.View>
+        )}
+        {combo >= 2 && (
+          <View pointerEvents="none" style={styles.comboTag}>
+            <Text style={styles.comboText}>🔥 x{combo}</Text>
+          </View>
+        )}
+      </View>
+    </Animated.View>
+  );
+
+  const tray = (
+    <View style={[styles.tray, { width: landscape ? sideW : boardSize + boardBox, height: trayH }]}>
+      {state.pieces.map((piece, i) => {
+        const fits = piece ? pieceFits(state.grid, piece) : false;
+        return (
           <View
             key={i}
-            style={[
-              styles.slot,
-              { width: slotW, height: trayCell * 5 + 12 },
-              selectedPiece === i && styles.slotSelected,
-            ]}
+            style={[styles.slot, { width: slotW, height: trayH - 8 }, selectedPiece === i && styles.slotSelected]}
             {...(piece ? responders[i].panHandlers : {})}
           >
             {piece && (
-              <View style={{ opacity: drag?.index === i ? 0.2 : 1 }}>
-                <PieceView piece={piece} size={trayCell} />
-              </View>
+              <TrayPiece
+                piece={piece}
+                size={trayCell}
+                index={i}
+                selected={selectedPiece === i}
+                hidden={drag?.index === i}
+                dim={!fits}
+              />
             )}
           </View>
-        ))}
+        );
+      })}
+    </View>
+  );
+
+  const hint = (
+    <Text style={styles.hint} numberOfLines={1}>
+      {locked
+        ? '⏳ Prepare-se…'
+        : anySelected
+          ? '👆 Toque numa casa livre para encaixar'
+          : 'Arraste uma peça • ou toque nela e depois no tabuleiro'}
+    </Text>
+  );
+
+  const power = (
+    <PowerBar
+      chips={chips}
+      onUse={applyItem}
+      onShop={() => setShopOpen(true)}
+      width={landscape ? sideW : Math.min(W - 24, boardSize + boardBox + 40)}
+      compact={H < 640}
+    />
+  );
+
+  const battleOver = battle && state.status === 'over' && !locked;
+
+  return (
+    <View ref={rootRef} style={styles.root} collapsable={false} onLayout={onRootLayout}>
+      <ThemedBackdrop themeId={theme.id} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, gradient(180, ['rgba(2,6,23,0.35)', 'rgba(2,6,23,0)', 'rgba(2,6,23,0.55)'], 'rgba(2,6,23,0.15)')]} />
+
+      <View style={styles.hudWrap}>
+        <ScoreHud
+          score={state.score}
+          best={state.best}
+          combo={combo}
+          coins={profile?.coins}
+          onBack={exit}
+          title={battle ? 'BATALHA' : 'TYCOON GAME'}
+        />
       </View>
+
+      {landscape ? (
+        <View style={styles.landscape}>
+          {board}
+          <View style={[styles.side, { width: sideW }]}>
+            {battle && <LiveScoreboard me={battle.me} opp={battle.opp} timeLeft={battle.timeLeft} />}
+            {tray}
+            {hint}
+            <View style={{ height: 12 }} />
+            {power}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.portrait}>
+          {battle && (
+            <View style={{ alignSelf: 'center', maxWidth: 600, width: '100%' }}>
+              <LiveScoreboard me={battle.me} opp={battle.opp} timeLeft={battle.timeLeft} />
+            </View>
+          )}
+          {board}
+          {hint}
+          {tray}
+          <View style={{ height: 12 }} />
+          {power}
+        </View>
+      )}
 
       {drag && dragged && (
         <View
@@ -347,6 +597,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             {
               left: drag.x - (pieceDims(dragged).cols * cell) / 2 - origins.current.root.x,
               top: drag.y - (pieceDims(dragged).rows * cell) / 2 - lift - origins.current.root.y,
+              opacity: target ? 1 : 0.85,
             },
           ]}
         >
@@ -354,30 +605,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         </View>
       )}
 
-      {mode === 'solo' && (
-        <View style={styles.powerBar}>
-          <PowerButton
-            icon="⚡"
-            label={boost > 0 ? `x2 · ${boost}` : 'x2'}
-            count={have('boost_x2')}
-            active={boost > 0}
-            disabled={boost > 0 || have('boost_x2') === 0 || state.status !== 'playing'}
-            onPress={() => applyItem('boost_x2')}
-          />
-          <PowerButton
-            icon="💣"
-            label="Bomba"
-            count={have('bomb')}
-            disabled={have('bomb') === 0 || state.status !== 'playing'}
-            onPress={() => applyItem('bomb')}
-          />
-        </View>
-      )}
-
-      {mode === 'solo' && !state.adsRemoved && (
+      {showFooter && (
         <View style={styles.footer}>
           <Pressable onPress={() => buyRemoveAds((m) => Alert.alert('Loja', m))}>
-            <Text style={styles.link}>Remover anúncios</Text>
+            <Text style={styles.link}>🚫 Remover anúncios</Text>
           </Pressable>
           <Pressable
             onPress={() =>
@@ -392,105 +623,146 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         </View>
       )}
 
+      {battleOver && (
+        <View style={styles.waitBanner}>
+          <Text style={styles.waitText}>❌ Sem jogadas!</Text>
+          {rescues.some((r) => r.count > 0) ? (
+            <View style={styles.waitRow}>
+              {rescues
+                .filter((r) => r.count > 0)
+                .map((r) => (
+                  <Pressable key={r.id} style={styles.waitBtn} onPress={() => applyItem(r.id)} accessibilityRole="button">
+                    <Text style={styles.waitBtnText}>
+                      {r.icon} {r.label} ({r.count})
+                    </Text>
+                  </Pressable>
+                ))}
+            </View>
+          ) : (
+            <Pressable onPress={() => setShopOpen(true)}>
+              <Text style={styles.waitSub}>Aguardando o adversário… ou compre itens na 🛒 loja</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      <Toast msg={toast} />
+
       {mode === 'solo' && (
         <GameOverModal
-          visible={state.status === 'over'}
+          visible={state.status === 'over' && !shopOpen}
           score={state.score}
-          best={state.best}
+          prevBest={startBest}
+          coins={coinsForScore(state.score)}
           canRevive={!state.revived}
           adsRemoved={state.adsRemoved}
           onRevive={revive}
           onRestart={restartGame}
-          shields={have('shield')}
-          onShield={applyShield}
+          onMenu={exit}
+          rescues={rescues}
+          onRescue={applyItem}
         />
       )}
-      {battle && state.status === 'over' && (
-        <View pointerEvents="none" style={styles.waitBanner}>
-          <Text style={styles.waitText}>❌ Sem jogadas! Aguardando o adversário…</Text>
-        </View>
-      )}
+      <ShopModal visible={shopOpen} onClose={() => setShopOpen(false)} initialTab="powerups" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background, alignItems: 'center', overflow: 'hidden' },
-  waitBanner: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 70,
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(15,23,42,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(248,113,113,0.6)',
-  },
-  waitText: { color: '#fecaca', fontWeight: '800', fontSize: 13 },
+  root: { flex: 1, backgroundColor: PALETTE.void, alignItems: 'center', overflow: 'hidden' },
+  hudWrap: { alignSelf: 'stretch', paddingHorizontal: 10, alignItems: 'center' },
+  landscape: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 28, paddingBottom: 8 },
+  side: { alignItems: 'center', justifyContent: 'center' },
+  portrait: { flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', paddingBottom: 6 },
   board: {
-    backgroundColor: '#142036',
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 2,
-    borderTopColor: 'rgba(148,197,255,0.45)',
-    borderLeftColor: 'rgba(148,197,255,0.3)',
-    borderRightColor: 'rgba(0,0,0,0.4)',
-    borderBottomColor: '#070d1a',
-    borderBottomWidth: 9,
+    borderBottomColor: '#050912',
+    borderBottomWidth: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.6,
-    shadowRadius: 18,
     shadowOffset: { width: 0, height: 14 },
     elevation: 14,
   },
-  boardHot: { borderTopColor: '#fdba74', borderLeftColor: '#fb923c', shadowColor: '#f97316' },
   row: { flexDirection: 'row' },
-  cell: {
-    backgroundColor: COLORS.cell,
+  slotCell: {
+    position: 'absolute',
+    left: 1.5,
+    top: 1.5,
+    right: 1.5,
+    bottom: 1.5,
     borderTopWidth: 1.5,
-    borderTopColor: 'rgba(0,0,0,0.4)',
+    borderTopColor: 'rgba(0,0,0,0.35)',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: 'rgba(255,255,255,0.07)',
   },
-  cellAlt: { backgroundColor: '#1b2940' },
-  cellLine: { backgroundColor: 'rgba(250,204,21,0.3)' },
-  hint: { color: COLORS.muted, fontSize: 11, marginTop: 8, textAlign: 'center' },
-  powerBar: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  power: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'rgba(148,163,184,0.35)',
-    backgroundColor: 'rgba(15,23,42,0.6)',
+  lineHit: {
+    position: 'absolute',
+    left: 1,
+    top: 1,
+    right: 1,
+    bottom: 1,
+    borderWidth: 2,
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
-  powerOn: { borderColor: '#facc15', backgroundColor: 'rgba(250,204,21,0.18)' },
-  powerOff: { opacity: 0.4 },
-  powerText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  powerCount: { color: '#facc15', fontWeight: '900', fontSize: 13 },
+  danger: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: '#ef4444',
+    shadowColor: '#ef4444',
+    shadowOpacity: 1,
+    shadowRadius: 18,
+  },
+  boostTag: {
+    position: 'absolute',
+    top: -14,
+    right: 12,
+    backgroundColor: NEON.gold,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 2,
+    borderColor: '#0b1022',
+    shadowColor: NEON.gold,
+    shadowOpacity: 0.9,
+    shadowRadius: 10,
+  },
+  boostText: { color: '#0b1022', fontWeight: '900', fontSize: 12 },
+  comboTag: {
+    position: 'absolute',
+    top: -14,
+    left: 12,
+    backgroundColor: '#f97316',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 2,
+    borderColor: '#0b1022',
+  },
+  comboText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  hint: { color: 'rgba(203,213,225,0.75)', fontSize: 11.5, marginVertical: 8, textAlign: 'center', paddingHorizontal: 12 },
   tray: {
     flexDirection: 'row',
-    marginTop: 20,
-    backgroundColor: 'rgba(30,41,59,0.85)',
-    borderRadius: 18,
+    alignItems: 'center',
+    backgroundColor: 'rgba(15,23,42,0.72)',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: 'rgba(148,197,255,0.18)',
+    borderTopColor: 'rgba(255,255,255,0.25)',
     borderBottomWidth: 6,
-    borderBottomColor: '#070d1a',
-    paddingVertical: 6,
+    borderBottomColor: '#050912',
+    paddingVertical: 4,
+    marginTop: 4,
   },
-  slot: { alignItems: 'center', justifyContent: 'center' },
+  slot: { alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
   slotSelected: {
     borderWidth: 2,
-    borderColor: COLORS.accent,
-    borderRadius: 12,
-    backgroundColor: 'rgba(56,189,248,0.12)',
+    borderColor: NEON.cyan,
+    backgroundColor: 'rgba(34,211,238,0.12)',
+    shadowColor: NEON.cyan,
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
   },
   dragLayer: {
     position: 'absolute',
@@ -499,13 +771,40 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 22 },
+    zIndex: 40,
   },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'center',
+    gap: 24,
     alignSelf: 'stretch',
-    marginTop: 'auto',
-    paddingVertical: 12,
+    paddingVertical: 8,
   },
-  link: { color: COLORS.muted, fontSize: 12, textDecorationLine: 'underline' },
+  link: { color: 'rgba(148,163,184,0.85)', fontSize: 12, textDecorationLine: 'underline' },
+  waitBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(15,23,42,0.94)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(248,113,113,0.7)',
+    zIndex: 30,
+  },
+  waitText: { color: '#fecaca', fontWeight: '900', fontSize: 15 },
+  waitSub: { color: '#cbd5e1', fontSize: 12, marginTop: 4, textAlign: 'center' },
+  waitRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 8 },
+  waitBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: alpha(NEON.violet, 0.25),
+    borderWidth: 1.5,
+    borderColor: alpha(NEON.violet, 0.8),
+  },
+  waitBtnText: { color: '#ede9fe', fontWeight: '800', fontSize: 13 },
 });

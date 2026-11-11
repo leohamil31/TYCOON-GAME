@@ -133,7 +133,7 @@ export function ShopModal({ visible, onClose, initialTab = 'boards' }: Props) {
               onBuy={() => report(purchase(p.id), `${p.name} comprado!`)}
             />
           ))}
-          <Text style={styles.hint}>Use os power-ups durante a partida solo.</Text>
+          <Text style={styles.hint}>Use os power-ups nas partidas offline e online — toque no item na barra abaixo do tabuleiro.</Text>
         </View>
       ) : (
         <View>
