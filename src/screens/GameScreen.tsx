@@ -24,11 +24,13 @@ import { Toast, type ToastMsg } from '../components/Toast';
 import { BLOCK_COLORS, GAME } from '../constants';
 import { fillOf, garbageFor, pieceDims, pieceFits, snapPlacement } from '../game/engine';
 import { initAds } from '../services/ads';
+import { haptic, play } from '../services/sfx';
 import { buyRemoveAds, disposeIap, initIap, restorePurchases } from '../services/iap';
 import { ATTACK_IDS, BOOST_MOVES, coinsForScore, DEFAULT_FX, DEFAULT_SKIN, itemById, type AttackId, type PowerupId } from '../shop/catalog';
 import { themeFor } from '../shop/themes';
 import { useBlocks, type GameMode } from '../state/useBlocks';
 import { useProfile } from '../state/useProfile';
+import { useProgress } from '../state/useProgress';
 import { addScore } from '../storage';
 import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER } from '../theme';
 import type { PlayerView, Snapshot } from '../types';
@@ -148,6 +150,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     setAdsRemoved,
   } = useBlocks(mode, locked);
   const { profile, consume, reportRun, setLiveScore } = useProfile();
+  // Missões do dia: linhas, combos, bombas e ataques contam aqui; partidas/pontos/batalhas contam no servidor.
+  const { track: trackMission, flush: flushMissions } = useProgress();
+  const track = useCallback((k: 'lines' | 'combos' | 'bombs' | 'attacks', n = 1) => trackMission({ [k]: n }), [trackMission]);
+  useEffect(() => () => void flushMissions(), [flushMissions]);
   const theme = themeFor(profile?.equipped);
   const have = (id: string) => profile?.inventory[id] ?? 0;
 
@@ -286,6 +292,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     } else if (id === 'garbage' || id === 'freeze') {
       lastSent.current = Date.now();
       battle?.sendAttack(id === 'garbage' ? { kind: 'garbage', n: 4 } : { kind: 'freeze' });
+      play('attackSend');
+      track('attacks');
       say(id === 'garbage' ? '4 blocos de lixo enviados!' : 'Bandeja do rival congelada!', 'ok', item.icon);
     } else if (id === 'reroll') {
       reroll();
@@ -311,9 +319,12 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     if (err) return say(err, 'error', '⚠️');
     if (mode === 'blast') {
       bombAt(r, c);
+      track('bombs');
     } else {
       lastSent.current = Date.now();
       battle?.sendAttack({ kind: 'rubble', r, c });
+      play('attackSend');
+      track('attacks');
       say('Bomba de entulho lançada!', 'ok', '☄️');
     }
   };
@@ -376,6 +387,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     grant: (index, x, y) => {
       if (locked || state?.status !== 'playing') return;
       setDrag({ index, x, y });
+      play('pick');
       void remeasure().then(() => setDrag((d) => (d ? { ...d } : d)));
     },
     move: (index, x, y) => setDrag((d) => (d ? { index, x, y } : d)),
@@ -421,7 +433,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     const y = pageY - origins.current.board.y;
     const { rows, cols } = pieceDims(piece);
     const spot = snapPlacement(state.grid, piece, Math.round(y / cell - rows / 2), Math.round(x / cell - cols / 2));
-    if (!spot) return say('Não cabe aí. Tente outra casa.', 'info', '🚫');
+    if (!spot) {
+      play('invalid');
+      return say('Não cabe aí. Tente outra casa.', 'info', '🚫');
+    }
     place(selectedPiece, spot.r, spot.c);
     setSelectedPiece(null);
   };
@@ -440,6 +455,33 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     ).start();
   }, [fx, shake]);
 
+  // ------------------------------------------------------------- sons e vibração
+  useEffect(() => {
+    if (!placed || placed.points <= 0) return; // points 0 = lixo recebido (som próprio)
+    play('place', placed.cells.length);
+    haptic('light');
+  }, [placed]);
+  useEffect(() => {
+    if (!fx) return;
+    if (fx.kind === 'bomb') {
+      play('bomb');
+      haptic('heavy');
+    } else if (fx.kind === 'clear') {
+      track('lines', fx.lines);
+      if (fx.combo >= 2) track('combos');
+      play(fx.perfect ? 'perfect' : 'clear', Math.min(4, fx.lines) * 10 + Math.min(9, fx.combo));
+      haptic(fx.lines >= 2 || fx.combo >= 2 ? 'heavy' : 'medium');
+    }
+  }, [fx]);
+  const overNow = state?.status === 'over';
+  useEffect(() => {
+    if (overNow) {
+      void flushMissions();
+      play('gameOver');
+      haptic([40, 60, 40]);
+    }
+  }, [overNow]);
+
   // ------------------------------------------------------------- batalha: ataques recebidos e enviados
   const hit = useRef(new Animated.Value(0)).current;
   const flashHit = useCallback(() => {
@@ -455,6 +497,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     if (!a || !ack || !state || matchLocked) return;
     ack([a.id]);
     flashHit();
+    play(a.kind === 'freeze' ? 'freeze' : 'attackHit');
+    haptic([30, 40, 50]);
     if (a.kind === 'freeze') {
       setFrozen(true);
       setSelectedPiece(null);
@@ -483,7 +527,11 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     if (!fx || fx.kind !== 'clear' || !sendAttack || matchLocked || lastAutoFx.current === fx.id) return;
     lastAutoFx.current = fx.id;
     const n = Math.min(8, garbageFor(fx.lines, fx.combo));
-    if (n > 0 && sendAttack({ kind: 'garbage', n }, true)) say(`Combo! ${n} blocos de lixo no rival`, 'ok', '⚔️');
+    if (n > 0 && sendAttack({ kind: 'garbage', n }, true)) {
+      play('attackSend');
+      track('attacks');
+      say(`Combo! ${n} blocos de lixo no rival`, 'ok', '⚔️');
+    }
   }, [fx, sendAttack, matchLocked, say]);
 
   const fill = state ? fillOf(state.grid) : 0;

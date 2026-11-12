@@ -17,6 +17,9 @@ import {
   USER_CODE_LENGTH,
   type ApiErrorCode,
   type Friend,
+  type ChestReward,
+  type DailyState,
+  type MissionEvents,
   type Profile,
   type RankEntry,
 } from '../shop/types';
@@ -48,6 +51,12 @@ export interface Backend {
   leaderboard?(scope: 'global' | 'friends'): Promise<RankEntry[]>;
   /** Registra o resultado de uma batalha (vitórias no ranking). */
   reportBattle?(matchId: string, score: number, won: boolean): Promise<Profile>;
+  /** Progressão (só com servidor): missões do dia, recompensa diária e baús. */
+  dailyState?(): Promise<DailyState>;
+  missionEvent?(events: MissionEvents): Promise<DailyState>;
+  claimDaily?(): Promise<{ coins: number; chest: boolean; streak: number; profile: Profile }>;
+  claimMission?(id: string): Promise<DailyState>;
+  openChest?(): Promise<{ reward: ChestReward; profile: Profile }>;
   listFriends(): Promise<Friend[]>;
   addFriend(code: string): Promise<Friend[]>;
   removeFriend(code: string): Promise<Friend[]>;
@@ -327,6 +336,11 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       throw new ApiError('invalid', 'Salas usam o Supabase Realtime.');
     },
     leaderboard: (scope) => rpc(scope === 'global' ? 'leaderboard_global' : 'leaderboard_friends'),
+    dailyState: () => rpc('daily_state'),
+    missionEvent: (events) => rpc('mission_event', { p_events: events }),
+    claimDaily: () => rpc('claim_daily'),
+    claimMission: (id) => rpc('claim_mission', { p_mission: id }),
+    openChest: () => rpc('open_chest'),
     reportBattle: (matchId, score, won) => rpc('report_battle', { p_match_id: matchId, p_score: Math.floor(score), p_won: won }),
     listFriends: () => rpc('list_friends'),
     addFriend: (code) => rpc('add_friend', { p_code: normalizeUserCode(code) }),

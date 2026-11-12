@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { cleanPlayerName } from '../shop/types';
 import { useProfile } from '../state/useProfile';
+import { getSfxSettings, haptic, onSfxSettings, play, setSfxSettings } from '../services/sfx';
 import { saveName } from '../storage';
 import { alpha, NEON } from '../theme';
 import { ActionButton, Banner, GlassModal } from './GlassModal';
@@ -17,6 +18,8 @@ export function SettingsModal({ visible, onClose, onOpenShop }: Props) {
   const { profile, mode, rename } = useProfile();
   const [name, setName] = useState('');
   const [msg, setMsg] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
+  const [sfx, setSfx] = useState(getSfxSettings);
+  useEffect(() => onSfxSettings(() => setSfx(getSfxSettings())), []);
 
   useEffect(() => {
     if (visible) {
@@ -52,6 +55,28 @@ export function SettingsModal({ visible, onClose, onOpenShop }: Props) {
       </View>
       <Text style={styles.label}>CÓDIGO DE AMIGO</Text>
       <Text style={styles.code}>{profile?.userId ?? '—'}</Text>
+      <Text style={styles.label}>SOM E VIBRAÇÃO</Text>
+      <View style={styles.row}>
+        <ActionButton
+          label={sfx.sound ? '🔊 Som ligado' : '🔇 Som desligado'}
+          tone={sfx.sound ? NEON.green : '#94a3b8'}
+          ghost={!sfx.sound}
+          onPress={() => {
+            setSfxSettings({ sound: !sfx.sound });
+            if (!sfx.sound) play('coin');
+          }}
+        />
+        <View style={{ width: 10 }} />
+        <ActionButton
+          label={sfx.haptics ? '📳 Vibração ligada' : '📴 Vibração desligada'}
+          tone={sfx.haptics ? NEON.green : '#94a3b8'}
+          ghost={!sfx.haptics}
+          onPress={() => {
+            setSfxSettings({ haptics: !sfx.haptics });
+            if (!sfx.haptics) haptic('medium');
+          }}
+        />
+      </View>
       <View style={{ marginTop: 16 }}>
         <ActionButton
           label="🎨 Trocar tabuleiro"

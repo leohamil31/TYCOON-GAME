@@ -4,6 +4,7 @@ import { glass, NEON, USE_NATIVE_DRIVER } from '../theme';
 import type { BattleResult } from '../types';
 import { AnimatedIcon } from './AnimatedIcon';
 import { Confetti } from './Confetti';
+import { haptic, play } from '../services/sfx';
 import { GlassButton } from './GlassButton';
 import { Odometer } from './Odometer';
 
@@ -13,6 +14,8 @@ export function CountdownOverlay({ count, oppName }: { count: number; oppName: s
   useEffect(() => {
     pop.setValue(0);
     Animated.spring(pop, { toValue: 1, friction: 4, tension: 120, useNativeDriver: USE_NATIVE_DRIVER }).start();
+    play(count > 0 ? 'countdown' : 'go');
+    haptic(count > 0 ? 'light' : 'medium');
   }, [count, pop]);
 
   return (
@@ -65,7 +68,9 @@ export function ResultOverlay({ result, myName, oppName, canRematch, isHost, fri
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(enter, { toValue: 1, friction: 7, tension: 200, useNativeDriver: USE_NATIVE_DRIVER }).start();
-  }, [enter]);
+    play(result.outcome === 'win' ? 'win' : 'lose');
+    haptic(result.outcome === 'win' ? [30, 50, 30, 50, 80] : 'medium');
+  }, [enter, result.outcome]);
 
   const win = result.outcome === 'win';
   const draw = result.outcome === 'draw';

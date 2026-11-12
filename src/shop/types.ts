@@ -18,7 +18,47 @@ export interface Profile {
   /** Batalhas vencidas / jogadas. */
   wins?: number;
   battles?: number;
+  /** Progressão (servidor): XP total, nível, XP dentro do nível e necessário para o próximo. */
+  xp?: number;
+  level?: number;
+  xpInto?: number;
+  xpNeed?: number;
+  /** Baús ainda não abertos (1 por nível). */
+  chests?: number;
+  /** Dias seguidos pegando a recompensa diária. */
+  streak?: number;
 }
+
+export interface Mission {
+  id: string;
+  title: string;
+  icon: string;
+  target: number;
+  progress: number;
+  reward: number;
+  xp: number;
+  claimed: boolean;
+  battle: boolean;
+}
+
+export interface DailyState {
+  day: string;
+  streak: number;
+  canClaimDaily: boolean;
+  dailyCoins: number;
+  dailyChest: boolean;
+  nextStreak: number;
+  missions: Mission[];
+  profile: Profile;
+}
+
+export type ChestReward =
+  | { kind: 'coins'; amount: number }
+  | { kind: 'items'; items: Record<string, number> }
+  | { kind: 'cosmetic'; id: string };
+
+/** Eventos de partida que contam para as missões. */
+export type MissionEvents = Partial<Record<'lines' | 'combos' | 'bombs' | 'attacks', number>>;
 
 /** Linha do ranking (global ou de amigos). */
 export interface RankEntry {

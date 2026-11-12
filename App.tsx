@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { StatusBar, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { InviteBanner } from './src/components/InviteBanner';
+import { LevelUpBanner } from './src/components/LevelUpBanner';
 import { GameScreen } from './src/screens/GameScreen';
 import { MenuScreen } from './src/screens/MenuScreen';
 import { OnlineFlow, type OnlineStart } from './src/screens/OnlineFlow';
 import { ProfileProvider } from './src/state/useProfile';
+import { ProgressProvider } from './src/state/useProgress';
 import { PALETTE } from './src/theme';
 
 type Screen = 'menu' | 'solo' | 'online';
@@ -26,6 +28,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ProfileProvider>
+        <ProgressProvider>
         {/* SafeAreaView de react-native-safe-area-context: o do react-native foi descontinuado e não funciona no Android. */}
         <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
           <StatusBar barStyle="light-content" />
@@ -39,7 +42,9 @@ export default function App() {
           {screen === 'solo' && <GameScreen mode="solo" onExit={toMenu} />}
           {screen === 'online' && <OnlineFlow key={visit} start={start} onExit={toMenu} />}
           <InviteBanner busy={screen === 'online'} onAccept={(inv) => goOnline({ kind: 'join', room: inv.room, friendName: inv.name })} />
+          <LevelUpBanner />
         </SafeAreaView>
+        </ProgressProvider>
       </ProfileProvider>
     </SafeAreaProvider>
   );

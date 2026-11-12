@@ -5,7 +5,9 @@ import { BottomNav, type NavItem } from '../components/BottomNav';
 import { FriendsPanel } from '../components/FriendsPanel';
 import { GlassButton } from '../components/GlassButton';
 import { Leaderboard } from '../components/Leaderboard';
+import { ProgressPanel } from '../components/ProgressPanel';
 import { SettingsModal } from '../components/SettingsModal';
+import { Toast, type ToastMsg } from '../components/Toast';
 import { ShopModal } from '../components/ShopModal';
 import { ThemedBackdrop } from '../components/ThemedBackdrop';
 import { TitleLogo } from '../components/TitleLogo';
@@ -39,6 +41,7 @@ export function MenuScreen({ onSolo, onOnline, onChallenge }: Props) {
   const [settings, setSettings] = useState(false);
   const [inviteCode] = useState(linkInvite);
   const [friendsOpen, setFriendsOpen] = useState(inviteCode !== '');
+  const [toast, setToast] = useState<ToastMsg | null>(null);
   const wide = width >= 820;
   const enter = useRef(new Animated.Value(0)).current;
 
@@ -110,6 +113,8 @@ export function MenuScreen({ onSolo, onOnline, onChallenge }: Props) {
             <Text style={styles.foot}>Encaixe os blocos • complete linhas • faça combos</Text>
           </Animated.View>
           <View style={[styles.col, wide ? styles.colWide : { marginTop: 22 }]}>
+            <ProgressPanel onToast={(text) => setToast({ id: Date.now(), text, kind: 'info' })} />
+            <View style={{ height: 16 }} />
             <Leaderboard entries={scores} />
           </View>
         </ScrollView>
@@ -117,6 +122,7 @@ export function MenuScreen({ onSolo, onOnline, onChallenge }: Props) {
         <View style={styles.bottom}>
           <BottomNav items={nav} />
         </View>
+        <Toast msg={toast} />
       </View>
     </View>
   );

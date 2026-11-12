@@ -16,6 +16,8 @@ interface ProfileCtx {
   reload: () => void;
   setLiveScore: (score: number) => void;
   reportRun: (runId: string, score: number) => Result;
+  /** Troca o perfil pelo que o servidor devolveu (missões, baús, recompensa diária). */
+  applyProfile: (p: Profile) => void;
   /** Resultado de batalha: moedas + vitória no ranking (cai para reportRun sem servidor). */
   reportBattle: (matchId: string, score: number, won: boolean) => Result;
   purchase: (itemId: string, qty?: number) => Result;
@@ -94,6 +96,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     liveScore.current = sc;
   }, []);
   const reportRun = useCallback((runId: string, score: number) => run(() => backend.reportRun(runId, score)), [run]);
+  const applyProfile = useCallback((p: Profile) => setProfile(p), []);
   const reportBattle = useCallback(
     (matchId: string, score: number, won: boolean) =>
       run(() => (backend.reportBattle ? backend.reportBattle(matchId, score, won) : backend.reportRun(matchId, score))),
@@ -131,6 +134,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       reload,
       setLiveScore,
       reportRun,
+      applyProfile,
       reportBattle,
       purchase,
       simulatedIap,
@@ -141,7 +145,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       addFriend,
       removeFriend,
     }),
-    [profile, friends, loading, loadError, reload, setLiveScore, reportRun, reportBattle, purchase, simulatedIap, equipBoard, consume, rename, refreshFriends, addFriend, removeFriend],
+    [profile, friends, loading, loadError, reload, setLiveScore, reportRun, applyProfile, reportBattle, purchase, simulatedIap, equipBoard, consume, rename, refreshFriends, addFriend, removeFriend],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

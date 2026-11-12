@@ -70,6 +70,32 @@ await must('add_friend de novo', A.rpc('add_friend', { p_code: pb.userId }));
 const lf = await must('leaderboard_friends', A.rpc('leaderboard_friends'));
 if (lf.length !== 2 || lf[0].name !== 'Teste B') throw new Error('ranking de amigos errado: ' + JSON.stringify(lf));
 
+// Missões, recompensa diária, níveis e baús
+const ds = await must('daily_state', B.rpc('daily_state'));
+if (ds.missions.length !== 3 || !ds.canClaimDaily) throw new Error('estado diário errado: ' + JSON.stringify(ds));
+const cd = await must('claim_daily', B.rpc('claim_daily'));
+if (cd.streak !== 1 || cd.coins !== 30) throw new Error('recompensa diária errada: ' + JSON.stringify(cd));
+const cd2 = await B.rpc('claim_daily');
+if (!cd2.error?.message.startsWith('forbidden|')) throw new Error('recompensa diária repetida deveria falhar');
+ok('recompensa diária só uma vez por dia');
+const ev = await must('mission_event', B.rpc('mission_event', { p_events: { lines: 100, combos: 100, bombs: 100, attacks: 100 } }));
+const done = ev.missions.find((m) => m.progress >= m.target && !m.claimed);
+if (done) {
+  const cl = await must(`claim_mission ${done.id}`, B.rpc('claim_mission', { p_mission: done.id }));
+  if (!cl.missions.find((m) => m.id === done.id).claimed) throw new Error('missão não marcou como resgatada');
+  const again = await B.rpc('claim_mission', { p_mission: done.id });
+  if (!again.error?.message.startsWith('already_owned|')) throw new Error('missão resgatada duas vezes');
+  ok('missão não pode ser resgatada duas vezes');
+} else ok('(nenhuma missão de evento hoje para resgatar)');
+const noChest = await A.rpc('open_chest');
+if (!noChest.error?.message.startsWith('not_owned|')) throw new Error('baú sem ter deveria falhar');
+ok('baú bloqueado sem nível');
+const lvl = await must('report_run 3000 (sobe de nível)', A.rpc('report_run', { p_run_id: 'smoke-lvl-' + Date.now(), p_score: 3000 }));
+if (lvl.level < 2 || lvl.chests < 1) throw new Error('não subiu de nível: ' + JSON.stringify(lvl));
+const chest = await must('open_chest', A.rpc('open_chest'));
+if (!['coins', 'items', 'cosmetic'].includes(chest.reward.kind) || chest.profile.chests !== lvl.chests - 1) throw new Error('baú errado: ' + JSON.stringify(chest));
+ok(`baú deu: ${JSON.stringify(chest.reward)}`);
+
 // Sala em tempo real
 const room = 'SMK' + Math.random().toString(36).slice(2, 4).toUpperCase();
 const got = new Promise((resolve, reject) => {
