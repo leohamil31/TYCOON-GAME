@@ -19,6 +19,8 @@ import type { ScoreEntry } from '../types';
 interface Props {
   onSolo: () => void;
   onOnline: () => void;
+  /** Desafiar um amigo online (cria sala e envia convite). */
+  onChallenge: (friendCode: string, friendName: string) => void;
 }
 
 /** Código de amigo vindo do link de convite (?amigo=CODE), só na web. */
@@ -29,7 +31,7 @@ const linkInvite = (): string => {
   return isUserCode(c) ? c : '';
 };
 
-export function MenuScreen({ onSolo, onOnline }: Props) {
+export function MenuScreen({ onSolo, onOnline, onChallenge }: Props) {
   const { width, height } = useWindowDimensions();
   const { profile } = useProfile();
   const [scores, setScores] = useState<ScoreEntry[]>([]);
@@ -62,7 +64,15 @@ export function MenuScreen({ onSolo, onOnline }: Props) {
       <ThemedBackdrop themeId={profile?.equipped ?? 'classic'} />
       <AmbientOrbs />
       <ShopModal visible={shop} onClose={() => setShop(false)} />
-      <FriendsPanel visible={friendsOpen} onClose={() => setFriendsOpen(false)} initialCode={inviteCode} />
+      <FriendsPanel
+        visible={friendsOpen}
+        onClose={() => setFriendsOpen(false)}
+        initialCode={inviteCode}
+        onChallenge={(code, name) => {
+          setFriendsOpen(false);
+          onChallenge(code, name);
+        }}
+      />
       <SettingsModal visible={settings} onClose={() => setSettings(false)} onOpenShop={() => setShop(true)} />
 
       <View style={styles.frame}>

@@ -6,9 +6,14 @@ export const alpha = (hex: string, a: number): string => {
   return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 };
 
-/** Frosted-glass panel look. backdrop-filter only exists on web; native just gets the translucent fill. */
+const isWebPlatform = Platform.OS === 'web';
+
+/**
+ * Frosted-glass panel look. backdrop-filter only exists on web; no app nativo (sem desfoque) o fundo
+ * fica mais opaco para não "lavar" o painel sobre o cenário animado.
+ */
 export const glass: ViewStyle = {
-  backgroundColor: 'rgba(15, 23, 42, 0.55)',
+  backgroundColor: isWebPlatform ? 'rgba(15, 23, 42, 0.55)' : 'rgba(13, 20, 40, 0.86)',
   borderWidth: 1,
   borderColor: 'rgba(186, 230, 253, 0.18)',
   borderTopColor: 'rgba(255, 255, 255, 0.32)',
@@ -36,7 +41,7 @@ export const gradient = (angle: number, stops: string[], fallback: string): View
 
 /** Vidro "forte": blur maior, borda superior brilhante e sombra profunda. */
 export const glassStrong: ViewStyle = {
-  backgroundColor: 'rgba(10, 16, 38, 0.62)',
+  backgroundColor: isWeb ? 'rgba(10, 16, 38, 0.62)' : 'rgba(10, 16, 38, 0.9)',
   borderWidth: 1,
   borderColor: 'rgba(148, 197, 255, 0.16)',
   borderTopColor: 'rgba(255, 255, 255, 0.38)',
@@ -44,7 +49,8 @@ export const glassStrong: ViewStyle = {
   shadowOpacity: 0.5,
   shadowRadius: 24,
   shadowOffset: { width: 0, height: 12 },
-  elevation: 10,
+  // Android: elevation em fundo translúcido desenha um retângulo escuro por trás — por isso fica sem.
+  elevation: 0,
   ...(isWeb
     ? ({
         backdropFilter: 'blur(22px) saturate(160%)',
@@ -63,3 +69,9 @@ export const NEON = {
 
 /** Native driver is not available on react-native-web. */
 export const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+
+/** Sombra só onde fica bonita: iOS/web usam shadow*; no Android, elevation apenas em superfícies opacas. */
+export const IS_ANDROID = Platform.OS === 'android';
+
+/** Texto sem o "respiro" extra de fonte do Android (centraliza emojis e números). */
+export const tightText = IS_ANDROID ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const) : {};

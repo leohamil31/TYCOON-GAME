@@ -1,6 +1,7 @@
 import type { DataConnection, Peer as PeerInstance } from 'peerjs';
 import { BLOCK_COLORS, GAME } from '../constants';
 import { cleanName } from '../storage';
+import { supabase } from './supabase';
 import type { Grid } from '../types';
 import { loadPeer, type PeerCtor } from './loadPeer';
 
@@ -159,7 +160,111 @@ const openHost = (Peer: PeerCtor, code: string, h: Handlers): Promise<Connection
     });
   });
 
+// ---------------------------------------------------------------- Supabase Realtime (web + Android + iOS)
+// Cada sala é um canal "tycoon-room-CODE": presença diz quem está na sala, broadcast leva as jogadas.
+type Channel = ReturnType<NonNullable<typeof supabase>['channel']>;
+type Role = 'host' | 'guest';
+
+const roomChannel = (code: string) => `tycoon-room-${code}`;
+const randomKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const openSupabaseRoom = (code: string, role: Role, h: Handlers): Promise<Connection> =>
+  new Promise((resolve, reject) => {
+    const sb = supabase!;
+    const me = randomKey();
+    const ch: Channel = sb.channel(roomChannel(code), {
+      config: { broadcast: { self: false }, presence: { key: me } },
+    });
+    let settled = false;
+    let peerHere = false;
+    let closed = false;
+
+    const conn: Connection = {
+      send: (msg) => {
+        if (!closed) void ch.send({ type: 'broadcast', event: 'm', payload: msg });
+      },
+      close: () => {
+        if (closed) return;
+        void ch.send({ type: 'broadcast', event: 'm', payload: { t: 'bye' } satisfies BattleMsg });
+        closed = true;
+        setTimeout(() => void sb.removeChannel(ch), 200);
+      },
+    };
+    const fail = (msg: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      closed = true;
+      void sb.removeChannel(ch);
+      reject(new Error(msg));
+    };
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(conn);
+    };
+    const timer = setTimeout(() => fail(role === 'guest' ? ERR_NOT_FOUND : ERR_SERVER), role === 'guest' ? 9000 : 12000);
+
+    const others = () =>
+      Object.entries(ch.presenceState() as Record<string, { role?: Role }[]>)
+        .filter(([k]) => k !== me)
+        .map(([, metas]) => metas[0]?.role);
+
+    ch.on('broadcast', { event: 'm' }, ({ payload }: { payload: unknown }) => {
+      if (closed) return;
+      const m = parseMsg(payload);
+      if (!m) return;
+      if (m.t === 'bye') {
+        if (peerHere) {
+          peerHere = false;
+          h.onPeerLeft();
+        }
+      } else h.onMessage(m);
+    });
+
+    ch.on('presence', { event: 'sync' }, () => {
+      if (closed) return;
+      const roles = others();
+      if (role === 'host') {
+        const here = roles.includes('guest');
+        if (here && !peerHere) {
+          peerHere = true;
+          h.onPeerJoined();
+        } else if (!here && peerHere) {
+          peerHere = false;
+          h.onPeerLeft();
+        }
+      } else {
+        const hostHere = roles.includes('host');
+        if (!settled) {
+          if (!hostHere) return; // espera o anfitrião aparecer (ou o tempo esgotar)
+          if (roles.filter((r) => r === 'guest').length > 0) return fail('Sala cheia: já tem dois jogadores.');
+          peerHere = true;
+          done();
+        } else if (!hostHere && peerHere) {
+          peerHere = false;
+          h.onPeerLeft();
+        }
+      }
+    });
+
+    ch.subscribe(async (status: string) => {
+      if (status === 'SUBSCRIBED') {
+        await ch.track({ role, at: Date.now() });
+        if (role === 'host') done();
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (!settled) fail(ERR_SERVER);
+        else if (!closed) h.onFatal(ERR_SERVER);
+      }
+    });
+  });
+
 export async function createRoom(h: Handlers): Promise<{ code: string; conn: Connection }> {
+  if (supabase) {
+    const code = makeCode();
+    return { code, conn: await openSupabaseRoom(code, 'host', h) };
+  }
   const Peer = await loadPeer();
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeCode();
@@ -175,6 +280,7 @@ export async function createRoom(h: Handlers): Promise<{ code: string; conn: Con
 export async function joinRoom(rawCode: string, h: Handlers): Promise<Connection> {
   const code = normalizeCode(rawCode);
   if (code.length !== CODE_LEN) throw new Error('Digite o código de 5 caracteres da sala.');
+  if (supabase) return openSupabaseRoom(code, 'guest', h);
   const Peer = await loadPeer();
 
   return new Promise((resolve, reject) => {

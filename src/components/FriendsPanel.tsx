@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { COLORS } from '../constants';
 import { isUserCode, normalizeUserCode, USER_CODE_LENGTH } from '../shop/types';
 import { useProfile } from '../state/useProfile';
@@ -21,6 +21,8 @@ interface Props {
   onClose: () => void;
   /** Código vindo de um link de convite (?amigo=CODE). */
   initialCode?: string;
+  /** Desafiar um amigo online para uma batalha. */
+  onChallenge?: (code: string, name: string) => void;
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -52,7 +54,7 @@ function OnlineDot({ online }: { online: boolean }) {
   );
 }
 
-export function FriendsPanel({ visible, onClose, initialCode = '' }: Props) {
+export function FriendsPanel({ visible, onClose, initialCode = '', onChallenge }: Props) {
   const { profile, friends, mode, addFriend, removeFriend, refreshFriends } = useProfile();
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
@@ -96,7 +98,7 @@ export function FriendsPanel({ visible, onClose, initialCode = '' }: Props) {
   return (
     <GlassModal visible={visible} onClose={onClose} title="AMIGOS" icon="👥" tone={NEON.pink}>
       {mode === 'local' && (
-        <Banner text="Modo demonstração: sem servidor, os amigos adicionados são simulados. Configure a API para amigos reais." />
+        <Banner text="Modo demonstração: sem servidor, os amigos adicionados são simulados. Configure o Supabase (src/services/supabase.ts) para amigos reais." />
       )}
 
       <View style={[styles.box, glass]}>
@@ -157,6 +159,16 @@ export function FriendsPanel({ visible, onClose, initialCode = '' }: Props) {
               <Odometer value={f.best} fontSize={15} color={NEON.gold} />
             </View>
           </View>
+          {!f.self && f.online && mode === 'remote' && onChallenge && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Desafiar ${f.name}`}
+              onPress={() => onChallenge(f.id, f.name)}
+              style={styles.duel}
+            >
+              <Text style={styles.duelText}>⚔️ Desafiar</Text>
+            </Pressable>
+          )}
           {!f.self && (
             <Text onPress={() => void removeFriend(f.id)} style={styles.remove} accessibilityLabel="Remover amigo">
               ✕
@@ -187,5 +199,7 @@ const styles = StyleSheet.create({
   nums: { alignItems: 'flex-end', marginLeft: 6 },
   numRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   tag: { color: COLORS.muted, fontSize: 9, fontWeight: '800' },
+  duel: { marginLeft: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 12, backgroundColor: alpha('#f472b6', 0.25), borderWidth: 1.5, borderColor: alpha('#f472b6', 0.8) },
+  duelText: { color: '#fff', fontWeight: '900', fontSize: 12 },
   remove: { color: COLORS.muted, fontSize: 14, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 4 },
 });

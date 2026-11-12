@@ -21,3 +21,5 @@ jest.mock('react-native-iap', () => ({
   purchaseErrorListener: () => ({ remove() {} }),
   requestPurchase: async () => {},
 }));
+// Testes não falam com o servidor: força o modo demonstração.
+jest.mock('./src/services/supabase', () => ({ supabase: null, SUPABASE_URL: '', SUPABASE_KEY: '', ensureSession: async () => {} }));

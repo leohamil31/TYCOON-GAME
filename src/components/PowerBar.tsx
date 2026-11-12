@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: 0,
   },
   glow: { borderRadius: 18 },
   label: { color: '#e2e8f0', fontWeight: '800', marginTop: 1, letterSpacing: 0.3 },

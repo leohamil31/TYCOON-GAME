@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   coinsForScore,
@@ -17,6 +18,7 @@ import {
   type Friend,
   type Profile,
 } from '../shop/types';
+import { ensureSession, supabase } from './supabase';
 
 export class ApiError extends Error {
   constructor(
@@ -250,4 +252,57 @@ function localBackend(): Backend {
   };
 }
 
-export const backend: Backend = API_URL ? remoteBackend(API_URL) : localBackend();
+// ---------------------------------------------------------------- Supabase (servidor gratuito)
+const API_CODES: ApiErrorCode[] = ['network', 'unauthorized', 'not_found', 'insufficient_funds', 'already_owned', 'not_owned', 'invalid', 'self', 'forbidden'];
+
+/** As funções SQL lançam 'codigo|mensagem'; erros de rede viram 'network'. */
+const fromSupabase = (e: unknown): ApiError => {
+  const msg = (e as { message?: string } | null)?.message ?? '';
+  const [code, text] = msg.split('|');
+  if (text && (API_CODES as string[]).includes(code)) return new ApiError(code as ApiErrorCode, text);
+  if (/fetch|network|timeout|Failed/i.test(msg)) return new ApiError('network', 'Sem conexão com o servidor.');
+  if (/anonymous/i.test(msg)) return new ApiError('unauthorized', 'Ative "Allow anonymous sign-ins" no Supabase (Authentication > Providers).');
+  return new ApiError('invalid', msg || 'Erro inesperado no servidor.');
+};
+
+function supabaseBackend(sb: SupabaseClient): Backend {
+  async function rpc<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
+    let res: { data: unknown; error: unknown };
+    try {
+      res = await sb.rpc(fn, args ?? {});
+    } catch (e) {
+      throw fromSupabase(e);
+    }
+    if (res.error) throw fromSupabase(res.error);
+    return res.data as T;
+  }
+
+  return {
+    mode: 'remote',
+    async init(name) {
+      try {
+        await ensureSession(sb);
+      } catch (e) {
+        throw fromSupabase(e);
+      }
+      return rpc<Profile>('init_profile', { p_name: cleanPlayerName(name) });
+    },
+    setName: (name) => rpc('set_name', { p_name: name }),
+    reportRun: (runId, score) => rpc('report_run', { p_run_id: runId, p_score: Math.floor(score) }),
+    purchase: (itemId, qty = 1) => rpc('purchase', { p_item: itemId, p_qty: qty }),
+    simulatedIap: (sku) => rpc('simulated_iap', { p_sku: sku }),
+    equipBoard: (boardId) => rpc('equip_board', { p_board: boardId }),
+    consume: (itemId) => rpc('consume', { p_item: itemId }),
+    async heartbeat(score) {
+      await rpc('heartbeat', { p_score: Math.floor(score) });
+    },
+    listFriends: () => rpc('list_friends'),
+    addFriend: (code) => rpc('add_friend', { p_code: normalizeUserCode(code) }),
+    removeFriend: (code) => rpc('remove_friend', { p_code: normalizeUserCode(code) }),
+  };
+}
+
+export const backend: Backend = API_URL ? remoteBackend(API_URL) : supabase ? supabaseBackend(supabase) : localBackend();
+
+/** true quando amigos e batalhas passam por um servidor de verdade (qualquer aparelho). */
+export const hasServer = backend.mode === 'remote';
