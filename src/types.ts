@@ -22,11 +22,24 @@ export interface SaveData {
 
 export interface ClearFx {
   id: number;
+  /** 'clear' = linhas completadas; 'bomb' = explosão do power-up. */
+  kind: 'clear' | 'bomb';
   lines: number;
   combo: number;
   points: number;
   perfect: boolean;
+  /** Pontos dobrados pelo multiplicador x2. */
+  boosted: boolean;
   cleared: { r: number; c: number; color: number }[];
+  rows: number[];
+  cols: number[];
+}
+
+/** Última peça colocada (anima o "encaixe" das casas). */
+export interface PlacedFx {
+  id: number;
+  cells: Coord[];
+  points: number;
 }
 
 export interface GameState extends SaveData {

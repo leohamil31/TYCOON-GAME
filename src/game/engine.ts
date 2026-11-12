@@ -52,7 +52,7 @@ export const SHAPES: Coord[][] = (() => {
   const seen = new Set<string>();
   const out: Coord[][] = [];
   for (const base of BASE_SHAPES) {
-    let shape = normalize(parse(base));
+    const shape = normalize(parse(base));
     for (const flip of [false, true]) {
       let s = flip ? mirror(shape) : shape;
       for (let i = 0; i < 4; i++) {
@@ -64,7 +64,6 @@ export const SHAPES: Coord[][] = (() => {
         s = rotate(s);
       }
     }
-    shape = normalize(parse(base));
   }
   return out;
 })();
@@ -179,6 +178,9 @@ export interface PlaceResult {
   placed: number;
   cleared: ClearedCell[];
   perfect: boolean;
+  /** Linhas/colunas completadas por esta jogada (para os efeitos visuais). */
+  rows: number[];
+  cols: number[];
 }
 
 export const placePiece = (grid: Grid, piece: Piece, r: number, c: number): PlaceResult => {
@@ -208,6 +210,8 @@ export const placePiece = (grid: Grid, piece: Piece, r: number, c: number): Plac
     placed: piece.cells.length,
     cleared,
     perfect: cleared.length > 0 && next.every((row) => row.every((v) => v === null)),
+    rows: fullRows,
+    cols: fullCols,
   };
 };
 
@@ -235,9 +239,26 @@ export const snapPlacement = (
   return best && { r: best.r, c: best.c };
 };
 
+const CENTER_LO = Math.floor((N - 4) / 2);
+const CENTER_HI = CENTER_LO + 3;
+const inCenter = (r: number, c: number) => r >= CENTER_LO && r <= CENTER_HI && c >= CENTER_LO && c <= CENTER_HI;
+
 /** Frees the central 4x4 area; used when the player continues after game over. */
-export const clearCenter = (grid: Grid): Grid => {
-  const lo = Math.floor((N - 4) / 2);
-  const hi = lo + 3;
-  return grid.map((row, r) => row.map((v, c) => (r >= lo && r <= hi && c >= lo && c <= hi ? null : v)));
+export const clearCenter = (grid: Grid): Grid => grid.map((row, r) => row.map((v, c) => (inCenter(r, c) ? null : v)));
+
+/** Blocks that `clearCenter` would remove (for the explosion effect). */
+export const centerBlocks = (grid: Grid): ClearedCell[] => {
+  const out: ClearedCell[] = [];
+  grid.forEach((row, r) =>
+    row.forEach((v, c) => {
+      if (v !== null && inCenter(r, c)) out.push({ r, c, color: v });
+    }),
+  );
+  return out;
 };
+
+/** Fraction of the board that is filled (0..1). */
+export const fillOf = (grid: Grid): number => fillRatio(grid);
+
+/** True if the piece fits somewhere on the board. */
+export const pieceFits = (grid: Grid, piece: Piece): boolean => fits(grid, piece.cells);

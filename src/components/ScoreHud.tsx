@@ -45,22 +45,27 @@ export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GA
       </Pressable>
 
       <View style={styles.block}>
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>PONTOS</Text>
-          {coins !== undefined && <Text style={styles.coins}>🪙 {coins}</Text>}
-        </View>
+        <Text style={styles.label}>PONTOS</Text>
         <Odometer value={score} fontSize={34} glow="rgba(125,211,252,0.7)" />
       </View>
 
       <View style={styles.center}>
-        <Text style={styles.title}>{title}</Text>
-        <Animated.View
-          style={[styles.chip, combo >= 2 && styles.chipOn, { transform: [{ scale: chip }] }]}
-        >
-          <Text style={[styles.chipText, combo >= 2 && styles.chipTextOn]}>
-            {combo >= 2 ? `🔥 COMBO x${combo}` : 'sem combo'}
-          </Text>
-        </Animated.View>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+        {combo >= 2 ? (
+          <Animated.View style={[styles.chip, styles.chipOn, { transform: [{ scale: chip }] }]}>
+            <Text style={[styles.chipText, styles.chipTextOn]} numberOfLines={1}>
+              🔥 COMBO x{combo}
+            </Text>
+          </Animated.View>
+        ) : coins !== undefined ? (
+          <View style={[styles.chip, styles.coinChip]}>
+            <Text style={styles.coins} numberOfLines={1}>
+              🪙 {coins}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={[styles.block, styles.right]}>
@@ -95,8 +100,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minHeight: 64,
   },
-  labelRow: { flexDirection: 'row', alignItems: 'center' },
-  coins: { color: NEON.gold, fontSize: 10, fontWeight: '900', marginLeft: 8 },
+  coins: { color: NEON.gold, fontSize: 12, fontWeight: '900' },
+  coinChip: { backgroundColor: 'rgba(250,204,21,0.12)', borderWidth: 1, borderColor: 'rgba(250,204,21,0.35)' },
   back: {
     width: 48,
     height: 48,
@@ -112,7 +117,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center' },
   recordRow: { flexDirection: 'row', alignItems: 'center' },
   label: { color: '#94a3b8', fontSize: 10, letterSpacing: 2, fontWeight: '800' },
-  title: { color: NEON.cyan, fontSize: 11, fontWeight: '900', letterSpacing: 3 },
+  title: { color: NEON.cyan, fontSize: 9.5, fontWeight: '900', letterSpacing: 1 },
   chip: {
     marginTop: 6,
     backgroundColor: 'rgba(148,163,184,0.14)',

@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { glass, NEON, USE_NATIVE_DRIVER } from '../theme';
 import type { BattleResult } from '../types';
 import { AnimatedIcon } from './AnimatedIcon';
+import { Confetti } from './Confetti';
 import { GlassButton } from './GlassButton';
 import { Odometer } from './Odometer';
 
@@ -16,6 +17,17 @@ export function CountdownOverlay({ count, oppName }: { count: number; oppName: s
 
   return (
     <View style={styles.overlay}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.ring,
+          {
+            borderColor: count <= 0 ? NEON.green : NEON.cyan,
+            opacity: pop.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0], extrapolate: 'clamp' }),
+            transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.4, 2.2] }) }],
+          },
+        ]}
+      />
       <Text style={styles.vs}>⚔️ Você vs {oppName}</Text>
       <Animated.Text
         style={[
@@ -37,6 +49,8 @@ interface ResultProps {
   canRematch: boolean;
   isHost: boolean;
   friendLeft: boolean;
+  /** Moedas ganhas nesta partida. */
+  coins?: number;
   onRematch: () => void;
   onExit: () => void;
 }
@@ -47,7 +61,7 @@ const REASONS: Record<BattleResult['reason'], string> = {
   left: 'Seu amigo saiu da batalha.',
 };
 
-export function ResultOverlay({ result, myName, oppName, canRematch, isHost, friendLeft, onRematch, onExit }: ResultProps) {
+export function ResultOverlay({ result, myName, oppName, canRematch, isHost, friendLeft, coins = 0, onRematch, onExit }: ResultProps) {
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(enter, { toValue: 1, friction: 6, tension: 90, useNativeDriver: USE_NATIVE_DRIVER }).start();
@@ -59,6 +73,7 @@ export function ResultOverlay({ result, myName, oppName, canRematch, isHost, fri
 
   return (
     <View style={styles.overlay}>
+      {win && <Confetti count={50} loops={3} />}
       <Animated.View
         style={[
           styles.card,
@@ -84,6 +99,8 @@ export function ResultOverlay({ result, myName, oppName, canRematch, isHost, fri
           </View>
         </View>
 
+        {coins > 0 && <Text style={styles.coins}>🪙 +{coins} moedas</Text>}
+
         <View style={styles.actions}>
           {friendLeft ? (
             <Text style={styles.hint}>Seu amigo saiu da sala.</Text>
@@ -108,6 +125,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
+  ring: { position: 'absolute', width: 180, height: 180, borderRadius: 90, borderWidth: 6 },
   vs: { color: '#cbd5e1', fontSize: 16, fontWeight: '800', letterSpacing: 1, marginBottom: 12 },
   count: {
     color: NEON.cyan,
@@ -117,7 +135,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 30,
     textShadowOffset: { width: 0, height: 0 },
   },
-  card: { alignSelf: 'stretch', maxWidth: 380, borderRadius: 28, borderWidth: 2, padding: 22, alignItems: 'center' },
+  card: { width: '100%', maxWidth: 400, borderRadius: 28, borderWidth: 2, padding: 22, alignItems: 'center' },
   title: {
     fontSize: 34,
     fontWeight: '900',
@@ -132,4 +150,5 @@ const styles = StyleSheet.create({
   x: { color: '#475569', fontSize: 24, marginHorizontal: 10 },
   actions: { alignSelf: 'stretch' },
   hint: { color: '#94a3b8', textAlign: 'center', fontSize: 13 },
+  coins: { color: NEON.gold, fontWeight: '900', fontSize: 15, marginBottom: 14, textShadowColor: 'rgba(250,204,21,0.6)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 0 } },
 });

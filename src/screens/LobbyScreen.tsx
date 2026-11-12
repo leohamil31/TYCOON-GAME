@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { AmbientOrbs } from '../components/AmbientOrbs';
 import { AnimatedIcon } from '../components/AnimatedIcon';
 import { Background } from '../components/Background';
 import { GlassButton } from '../components/GlassButton';
@@ -89,6 +90,7 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
   return (
     <View style={styles.root}>
       <Background />
+      <AmbientOrbs />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.col}>
@@ -223,7 +225,7 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0f172a' },
   scroll: { flexGrow: 1, alignItems: 'center', padding: 16, paddingBottom: 40 },
-  col: { alignSelf: 'stretch', maxWidth: 440, width: '100%' },
+  col: { alignSelf: 'center', maxWidth: 440, width: '100%' },
   back: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4 },
   backText: { color: '#cbd5e1', fontSize: 15, fontWeight: '700' },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 14 },

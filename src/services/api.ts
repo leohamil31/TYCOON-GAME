@@ -5,6 +5,7 @@ import {
   itemById,
   MAX_RUN_SCORE,
   packById,
+  STARTER_KIT,
 } from '../shop/catalog';
 import {
   cleanPlayerName,
@@ -164,9 +165,9 @@ function localBackend(): Backend {
           profile: {
             userId: randomCode(),
             name: cleanPlayerName(name),
-            coins: 0,
+            coins: 100,
             best: 0,
-            inventory: {},
+            inventory: { ...STARTER_KIT },
             boards: [DEFAULT_BOARD],
             equipped: DEFAULT_BOARD,
           },

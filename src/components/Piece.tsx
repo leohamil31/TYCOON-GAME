@@ -1,7 +1,8 @@
-import React, { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { memo, useEffect, useRef } from 'react';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { BLOCK_COLORS } from '../constants';
 import { pieceDims } from '../game/engine';
+import { USE_NATIVE_DRIVER } from '../theme';
 import type { Piece } from '../types';
 
 const shade = (hex: string, f: number): string => {
@@ -92,6 +93,100 @@ export const Block = memo(function Block({
     </View>
   );
 });
+
+/** Casa recém-encaixada: entra com "pop" elástico e um brilho branco que se apaga. */
+export function PopIn({ size, delay = 0, children }: { size: number; delay?: number; children: React.ReactNode }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.spring(v, { toValue: 1, friction: 4, tension: 220, useNativeDriver: USE_NATIVE_DRIVER }),
+    ]).start();
+  }, [v, delay]);
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) }],
+      }}
+    >
+      {children}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: 2,
+          top: 2,
+          right: 2,
+          bottom: 2,
+          borderRadius: size * 0.24,
+          backgroundColor: '#fff',
+          opacity: v.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.85, 0.35, 0] }),
+        }}
+      />
+    </Animated.View>
+  );
+}
+
+/** Peça da bandeja: entra girando/escalando quando chega uma mão nova; flutua quando selecionada. */
+export function TrayPiece({
+  piece,
+  size,
+  index,
+  selected,
+  hidden,
+  dim,
+}: {
+  piece: Piece;
+  size: number;
+  index: number;
+  selected: boolean;
+  hidden: boolean;
+  dim: boolean;
+}) {
+  const enter = useRef(new Animated.Value(0)).current;
+  const lift = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    enter.setValue(0);
+    Animated.sequence([
+      Animated.delay(index * 90),
+      Animated.spring(enter, { toValue: 1, friction: 5, tension: 120, useNativeDriver: USE_NATIVE_DRIVER }),
+    ]).start();
+  }, [piece.id, index, enter]);
+
+  useEffect(() => {
+    if (!selected) {
+      Animated.spring(lift, { toValue: 0, friction: 6, useNativeDriver: USE_NATIVE_DRIVER }).start();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(lift, { toValue: 1, duration: 520, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(lift, { toValue: 0.55, duration: 520, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [selected, lift]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: hidden ? 0.15 : dim ? 0.38 : 1,
+        transform: [
+          { scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) },
+          { rotate: enter.interpolate({ inputRange: [0, 1], outputRange: ['-25deg', '0deg'] }) },
+          { translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
+          { scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
+        ],
+      }}
+    >
+      <PieceView piece={piece} size={size} />
+    </Animated.View>
+  );
+}
 
 export function PieceView({ piece, size }: { piece: Piece; size: number }) {
   const { rows, cols } = pieceDims(piece);

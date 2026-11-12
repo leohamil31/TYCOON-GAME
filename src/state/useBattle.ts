@@ -24,6 +24,8 @@ export function useBattle() {
   const [count, setCount] = useState(COUNTDOWN);
   const [round, setRound] = useState(0);
   const [result, setResult] = useState<BattleResult | null>(null);
+  /** Id único da partida atual (usado para creditar moedas uma única vez). */
+  const [matchId, setMatchId] = useState('');
 
   const conn = useRef<Connection | null>(null);
   const roleRef = useRef<Role | null>(null);
@@ -64,6 +66,7 @@ export function useBattle() {
     setTimeLeft(BATTLE_SECONDS);
     setCount(COUNTDOWN);
     setRound((r) => r + 1);
+    setMatchId(`battle-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`);
     phaseRef.current = 'countdown';
     setPhase('countdown');
   }, []);
@@ -75,6 +78,7 @@ export function useBattle() {
       } else if (msg.t === 'start') {
         if (roleRef.current === 'guest') beginRound();
       } else if (msg.t === 'state') {
+        if (phaseRef.current === 'finished') return;
         setOpp((o) => ({ ...(o ?? blank('Amigo')), score: msg.score, combo: msg.combo, over: msg.over, grid: msg.grid }));
       }
     },
@@ -177,6 +181,8 @@ export function useBattle() {
   }, [beginRound]);
 
   const sendState = useCallback((s: Snapshot) => {
+    // Depois do apito final o placar fica congelado.
+    if (phaseRef.current === 'finished') return;
     setMe((m) => ({ ...m, ...s }));
     conn.current?.send({ t: 'state', ...s });
   }, []);
@@ -237,5 +243,5 @@ export function useBattle() {
     if (decided) finish('out');
   }, [phase, me.over, me.score, opp, finish]);
 
-  return { phase, role, code, error, me, opp, timeLeft, count, round, result, host, join, start, sendState, leave };
+  return { phase, role, code, error, me, opp, timeLeft, count, round, matchId, result, host, join, start, sendState, leave };
 }

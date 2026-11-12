@@ -78,7 +78,30 @@ export const ITEMS: readonly ShopItem[] = [
     icon: '💣',
     price: 200,
   },
+  {
+    id: 'reroll',
+    kind: 'consumable',
+    name: 'Nova Mão',
+    desc: 'Troca as 3 peças da bandeja por peças novas.',
+    icon: '🔄',
+    price: 120,
+  },
+  {
+    id: 'undo',
+    kind: 'consumable',
+    name: 'Desfazer',
+    desc: 'Volta a última jogada (inclusive depois de ficar sem jogadas).',
+    icon: '↩️',
+    price: 100,
+  },
 ];
+
+/** Ordem dos power-ups na barra da partida. */
+export const POWERUP_IDS = ['boost_x2', 'bomb', 'reroll', 'undo', 'shield'] as const;
+export type PowerupId = (typeof POWERUP_IDS)[number];
+
+/** Kit inicial de perfis novos (modo demonstração), para o jogador experimentar cada item. */
+export const STARTER_KIT: Record<string, number> = { boost_x2: 1, bomb: 1, reroll: 1, undo: 1, shield: 1 };
 
 export const COIN_PACKS: readonly CoinPack[] = [
   { id: 'coins_500', coins: 500, realCents: 490, icon: '🪙' },

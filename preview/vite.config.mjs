@@ -15,6 +15,7 @@ export default defineConfig({
       'react-native': 'react-native-web',
       'react-native-google-mobile-ads': here('stubs.ts'),
       'react-native-iap': here('stubs.ts'),
+      'react-native-safe-area-context': here('safeArea.tsx'),
       '@react-native-async-storage/async-storage': here('storageStub.ts'),
     },
   },

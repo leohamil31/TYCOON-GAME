@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   anyMoves,
   canPlace,
+  centerBlocks,
   clearCenter,
   dealPieces,
   emptyGrid,
@@ -10,7 +11,7 @@ import {
 } from '../game/engine';
 import { loadGame, saveGame } from '../storage';
 import { BOOST_MOVES } from '../shop/catalog';
-import type { ClearFx, GameState, SaveData } from '../types';
+import type { ClearFx, GameState, PlacedFx, SaveData } from '../types';
 
 const newGame = (best: number, adsRemoved: boolean): SaveData => {
   const grid = emptyGrid();
@@ -28,15 +29,29 @@ const newGame = (best: number, adsRemoved: boolean): SaveData => {
 
 export type GameMode = 'solo' | 'battle';
 
-export function useBlocks(mode: GameMode = 'solo') {
+/** Estado salvo antes da última jogada (power-up "Desfazer"). */
+interface UndoPoint {
+  save: SaveData;
+  boost: number;
+}
+
+export function useBlocks(mode: GameMode = 'solo', locked = false) {
   const [state, setState] = useState<GameState | null>(null);
   const [fx, setFx] = useState<ClearFx | null>(null);
+  const [placed, setPlaced] = useState<PlacedFx | null>(null);
   const [boost, setBoost] = useState(0);
+  const [canUndo, setCanUndo] = useState(false);
+  /** Recorde no início da partida (para saber se o jogador bateu o recorde). */
+  const [startBest, setStartBest] = useState(0);
+
   const ref = useRef<GameState | null>(null);
   ref.current = state;
   const boostRef = useRef(0);
   boostRef.current = boost;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const fxId = useRef(0);
+  const undo = useRef<UndoPoint | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +59,7 @@ export function useBlocks(mode: GameMode = 'solo') {
       if (cancelled) return;
       // Battles always start from a clean board; the saved game is only read for the record / ads flag.
       const initial = mode === 'solo' ? (s ?? newGame(0, false)) : newGame(s?.best ?? 0, s?.adsRemoved ?? false);
+      setStartBest(initial.best);
       setState({ ...initial, hydrated: true });
     });
     return () => {
@@ -57,10 +73,18 @@ export function useBlocks(mode: GameMode = 'solo') {
     void saveGame(save);
   }, [state, mode]);
 
-  const place = useCallback((index: number, r: number, c: number) => {
+  const snapshotFor = (s: GameState): SaveData => {
+    const { hydrated: _h, ...save } = s;
+    return save;
+  };
+
+  const place = useCallback((index: number, r: number, c: number): boolean => {
     const s = ref.current;
     const piece = s?.pieces[index];
-    if (!s || s.status !== 'playing' || !piece || !canPlace(s.grid, piece, r, c)) return;
+    if (lockedRef.current || !s || s.status !== 'playing' || !piece || !canPlace(s.grid, piece, r, c)) return false;
+    undo.current = { save: snapshotFor(s), boost: boostRef.current };
+    setCanUndo(true);
+
     const res = placePiece(s.grid, piece, r, c);
     const combo = res.lines > 0 ? s.combo + 1 : 0;
     const boosted = boostRef.current > 0;
@@ -78,45 +102,122 @@ export function useBlocks(mode: GameMode = 'solo') {
       best: Math.max(s.best, score),
       status: anyMoves(res.grid, pieces) ? 'playing' : 'over',
     });
+    const id = ++fxId.current;
+    setPlaced({ id, cells: piece.cells.map(([dr, dc]) => [r + dr, c + dc]), points });
     if (res.lines > 0) {
       setFx({
-        id: ++fxId.current,
+        id,
+        kind: 'clear',
         lines: res.lines,
         combo,
         points,
         perfect: res.perfect,
+        boosted,
         cleared: res.cleared,
+        rows: res.rows,
+        cols: res.cols,
       });
     }
+    return true;
   }, []);
 
   const restart = useCallback(() => {
     const s = ref.current;
     setFx(null);
+    setPlaced(null);
     setBoost(0);
-    if (s) setState({ ...newGame(s.best, s.adsRemoved), hydrated: true });
+    undo.current = null;
+    setCanUndo(false);
+    if (s) {
+      setStartBest(s.best);
+      setState({ ...newGame(s.best, s.adsRemoved), hydrated: true });
+    }
   }, []);
 
-  const revive = useCallback(() => {
+  /** Libera o centro e dá novas peças. `useRevive` marca o revive por anúncio como gasto. */
+  const rescue = (useRevive: boolean) => {
     const s = ref.current;
     if (!s) return;
+    const blocks = centerBlocks(s.grid);
     const grid = clearCenter(s.grid);
-    setState({ ...s, grid, pieces: dealPieces(grid), revived: true, status: 'playing' });
-  }, []);
+    undo.current = null;
+    setCanUndo(false);
+    setState({ ...s, grid, pieces: dealPieces(grid), revived: useRevive ? true : s.revived, status: 'playing' });
+    if (blocks.length > 0) {
+      setFx({
+        id: ++fxId.current,
+        kind: 'bomb',
+        lines: 0,
+        combo: 0,
+        points: 0,
+        perfect: false,
+        boosted: false,
+        cleared: blocks,
+        rows: [],
+        cols: [],
+      });
+    }
+  };
+
+  const revive = useCallback(() => rescue(true), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Escudo: como o revive, mas sem gastar o revive por anúncio. */
-  const shield = useCallback(() => {
+  const shield = useCallback(() => rescue(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Bomba: explode o centro 4x4. Vale 2 pontos por bloco destruído. */
+  const bomb = useCallback((): boolean => {
     const s = ref.current;
-    if (!s) return;
+    // Também funciona sem jogadas: abrir o centro pode salvar a partida.
+    if (lockedRef.current || !s) return false;
+    const blocks = centerBlocks(s.grid);
+    if (blocks.length === 0) return false;
     const grid = clearCenter(s.grid);
-    setState({ ...s, grid, pieces: dealPieces(grid), status: 'playing' });
+    const points = blocks.length * 2;
+    const score = s.score + points;
+    undo.current = null;
+    setCanUndo(false);
+    setState({
+      ...s,
+      grid,
+      score,
+      best: Math.max(s.best, score),
+      status: anyMoves(grid, s.pieces) ? 'playing' : 'over',
+    });
+    setFx({
+      id: ++fxId.current,
+      kind: 'bomb',
+      lines: 0,
+      combo: s.combo,
+      points,
+      perfect: false,
+      boosted: false,
+      cleared: blocks,
+      rows: [],
+      cols: [],
+    });
+    return true;
   }, []);
 
-  const bomb = useCallback(() => {
+  /** Nova Mão: troca as peças da bandeja por outras que cabem no tabuleiro. */
+  const reroll = useCallback((): boolean => {
     const s = ref.current;
-    if (!s || s.status !== 'playing') return;
-    const grid = clearCenter(s.grid);
-    setState({ ...s, grid, status: anyMoves(grid, s.pieces) ? 'playing' : 'over' });
+    if (lockedRef.current || !s) return false;
+    const pieces = dealPieces(s.grid);
+    setState({ ...s, pieces, status: anyMoves(s.grid, pieces) ? 'playing' : 'over' });
+    return true;
+  }, []);
+
+  /** Desfazer: volta para antes da última peça colocada. */
+  const undoMove = useCallback((): boolean => {
+    const u = undo.current;
+    if (lockedRef.current || !u) return false;
+    undo.current = null;
+    setCanUndo(false);
+    setFx(null);
+    setPlaced(null);
+    setBoost(u.boost);
+    setState((s) => ({ ...u.save, best: Math.max(u.save.best, s?.best ?? 0), revived: s?.revived ?? u.save.revived, hydrated: true }));
+    return true;
   }, []);
 
   const activateBoost = useCallback(() => setBoost(BOOST_MOVES), []);
@@ -125,5 +226,21 @@ export function useBlocks(mode: GameMode = 'solo') {
     setState((s) => (s && !s.adsRemoved ? { ...s, adsRemoved: true } : s));
   }, []);
 
-  return { state, fx, boost, place, restart, revive, shield, bomb, activateBoost, setAdsRemoved };
+  return {
+    state,
+    fx,
+    placed,
+    boost,
+    canUndo,
+    startBest,
+    place,
+    restart,
+    revive,
+    shield,
+    bomb,
+    reroll,
+    undoMove,
+    activateBoost,
+    setAdsRemoved,
+  };
 }
