@@ -1,17 +1,12 @@
-import type { DataConnection, Peer as PeerInstance } from 'peerjs';
 import { BLOCK_COLORS, GAME } from '../constants';
+import { backend } from './api';
 import { cleanName } from '../storage';
 import type { Grid } from '../types';
-import { loadPeer, type PeerCtor } from './loadPeer';
 
 /**
- * Real-time transport for friend battles.
- *
- * Uses PeerJS (WebRTC data channels) in browsers and its React Native WebRTC adapter in the apps.
- * The room code is the host's peer id; the public PeerJS signalling server introduces the players,
- * then game traffic flows peer-to-peer.
+ * Central WebSocket transport for friend battles. The same room protocol works in web browsers,
+ * Android, and iOS, without requiring the players' devices to accept peer-to-peer connections.
  */
-
 export type BattleMsg =
   | { t: 'hello'; name: string }
   | { t: 'start' }
@@ -32,178 +27,193 @@ export interface Handlers {
   onFatal(message: string): void;
 }
 
-const PREFIX = 'tycoon-game-v1-';
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
 const CODE_LEN = 5;
 const N = GAME.GRID_SIZE;
-
-const ERR_SERVER = 'Sem conexão com o servidor de salas. Verifique a internet.';
-const ERR_NOT_FOUND = 'Sala não encontrada. Confira o código.';
-
-class IdTaken extends Error {}
+const ERR_SERVER =
+  'Sem conexão com o servidor de partidas. Verifique a internet e tente novamente.';
+const ERR_NOT_FOUND =
+  'Sala não encontrada. Confira o código e confirme que o anfitrião ainda está aguardando.';
 
 export const normalizeCode = (raw: string): string =>
-  raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LEN);
+  raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, CODE_LEN);
 
-const makeCode = (): string => {
-  const bytes = new Uint8Array(CODE_LEN);
-  const c = (globalThis as { crypto?: { getRandomValues?: (a: Uint8Array) => Uint8Array } }).crypto;
-  if (c?.getRandomValues) c.getRandomValues(bytes);
-  else bytes.forEach((_, i) => (bytes[i] = Math.floor(Math.random() * 256)));
-  return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join('');
-};
+const isCount = (value: unknown): value is number =>
+  Number.isInteger(value) &&
+  (value as number) >= 0 &&
+  (value as number) <= 10_000_000;
 
-const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 10_000_000;
-
-const validGrid = (g: unknown): g is Grid =>
-  Array.isArray(g) &&
-  g.length === N &&
-  g.every(
-    (row) =>
+const validGrid = (grid: unknown): grid is Grid =>
+  Array.isArray(grid) &&
+  grid.length === N &&
+  grid.every(
+    row =>
       Array.isArray(row) &&
       row.length === N &&
-      row.every((v) => v === null || (Number.isInteger(v) && v >= 0 && v < BLOCK_COLORS.length)),
+      row.every(
+        cell =>
+          cell === null ||
+          (Number.isInteger(cell) && cell >= 0 && cell < BLOCK_COLORS.length),
+      ),
   );
 
-/** Everything coming from the other player is untrusted: validate shape and ranges. */
+/** Everything coming from the server or another player is validated before reaching the game state. */
 export const parseMsg = (raw: unknown): BattleMsg | null => {
-  if (!raw || typeof raw !== 'object') return null;
-  const m = raw as Record<string, unknown>;
-  switch (m.t) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const message = raw as Record<string, unknown>;
+  switch (message.t) {
     case 'hello':
-      return { t: 'hello', name: cleanName(m.name) || 'Amigo' };
+      return typeof message.name === 'string'
+        ? { t: 'hello', name: cleanName(message.name) || 'Amigo' }
+        : null;
     case 'start':
       return { t: 'start' };
     case 'bye':
       return { t: 'bye' };
     case 'state':
-      if (!isCount(m.score) || !isCount(m.combo) || typeof m.over !== 'boolean' || !validGrid(m.grid)) return null;
-      return { t: 'state', score: m.score, combo: m.combo, over: m.over, grid: m.grid };
+      if (
+        !isCount(message.score) ||
+        !isCount(message.combo) ||
+        typeof message.over !== 'boolean' ||
+        !validGrid(message.grid)
+      ) {
+        return null;
+      }
+      return {
+        t: 'state',
+        score: message.score,
+        combo: message.combo,
+        over: message.over,
+        grid: message.grid,
+      };
     default:
       return null;
   }
 };
 
-const describe = (type: string): string => {
-  if (type === 'peer-unavailable') return ERR_NOT_FOUND;
-  return ERR_SERVER;
-};
-
-const attach = (c: DataConnection, h: Handlers, onClose: () => void) => {
-  c.on('data', (d) => {
-    const m = parseMsg(d);
-    if (!m) return;
-    if (m.t === 'bye') c.close();
-    else h.onMessage(m);
-  });
-  c.on('close', onClose);
-  c.on('error', () => {});
-};
-
-const makeConnection = (c: () => DataConnection | null, peer: PeerInstance): Connection => ({
-  send: (msg) => {
-    const conn = c();
-    if (conn?.open) conn.send(msg);
-  },
-  close: () => {
-    try {
-      c()?.send({ t: 'bye' } satisfies BattleMsg);
-    } catch {
-      /* already closed */
-    }
-    // Give the "bye" a moment to flush before tearing the peer down.
-    setTimeout(() => peer.destroy(), 150);
-  },
-});
-
-const openHost = (Peer: PeerCtor, code: string, h: Handlers): Promise<Connection> =>
-  new Promise((resolve, reject) => {
-    const peer = new Peer(PREFIX + code);
-    let active: DataConnection | null = null;
-    let opened = false;
-    const timer = setTimeout(() => {
-      peer.destroy();
-      reject(new Error(ERR_SERVER));
-    }, 12000);
-
-    peer.on('open', () => {
-      opened = true;
-      clearTimeout(timer);
-      resolve(makeConnection(() => active, peer));
-    });
-
-    peer.on('error', (err) => {
-      if (!opened) {
-        clearTimeout(timer);
-        peer.destroy();
-        reject(err.type === 'unavailable-id' ? new IdTaken() : new Error(describe(err.type)));
-      } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
-        h.onFatal(ERR_SERVER);
-      }
-    });
-
-    peer.on('connection', (c) => {
-      if (active?.open) {
-        // Room is full: only one challenger at a time.
-        c.on('open', () => c.close());
-        return;
-      }
-      active = c;
-      c.on('open', () => h.onPeerJoined());
-      attach(c, h, () => {
-        if (active === c) {
-          active = null;
-          h.onPeerLeft();
-        }
-      });
-    });
-  });
-
-export async function createRoom(h: Handlers): Promise<{ code: string; conn: Connection }> {
-  const Peer = await loadPeer();
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = makeCode();
-    try {
-      return { code, conn: await openHost(Peer, code, h) };
-    } catch (e) {
-      if (!(e instanceof IdTaken)) throw e;
-    }
-  }
-  throw new Error('Não foi possível criar a sala. Tente novamente.');
+interface RoomResult {
+  code: string;
+  conn: Connection;
 }
 
-export async function joinRoom(rawCode: string, h: Handlers): Promise<Connection> {
-  const code = normalizeCode(rawCode);
-  if (code.length !== CODE_LEN) throw new Error('Digite o código de 5 caracteres da sala.');
-  const Peer = await loadPeer();
+const connectRoom = async (
+  action: { t: 'create' } | { t: 'join'; code: string },
+  handlers: Handlers,
+): Promise<RoomResult> => {
+  const socket = await backend.openBattleSocket();
 
   return new Promise((resolve, reject) => {
-    const peer = new Peer();
-    let opened = false;
-    let active: DataConnection | null = null;
-    const fail = (msg: string) => {
+    let connected = false;
+    let completed = false;
+    let intentionallyClosed = false;
+    let fatalReported = false;
+    const timer = setTimeout(() => fail(ERR_SERVER), 20_000);
+
+    const fail = (message: string) => {
+      if (completed) return;
+      completed = true;
       clearTimeout(timer);
-      peer.destroy();
-      reject(new Error(msg));
+      socket.close();
+      reject(new Error(message));
     };
-    const timer = setTimeout(() => fail(ERR_NOT_FOUND), 15000);
 
-    peer.on('error', (err) => {
-      if (!opened) fail(describe(err.type));
-      else h.onFatal(ERR_SERVER);
-    });
+    const connection: Connection = {
+      send(message) {
+        if (socket.readyState === WebSocket.OPEN)
+          socket.send(JSON.stringify(message));
+      },
+      close() {
+        intentionallyClosed = true;
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ t: 'bye' } satisfies BattleMsg));
+        }
+        if (socket.readyState < WebSocket.CLOSING) socket.close();
+      },
+    };
 
-    peer.on('open', () => {
-      const c = peer.connect(PREFIX + code, { reliable: true });
-      active = c;
-      attach(c, h, () => {
-        if (opened) h.onPeerLeft();
-      });
-      c.on('open', () => {
-        opened = true;
+    socket.onopen = () => socket.send(JSON.stringify(action));
+    socket.onmessage = event => {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+      const control = raw as Record<string, unknown>;
+
+      if (control.t === 'room' || control.t === 'joined') {
+        if (
+          typeof control.code !== 'string' ||
+          control.code.length !== CODE_LEN
+        ) {
+          fail(ERR_SERVER);
+          return;
+        }
+        connected = true;
+        completed = true;
         clearTimeout(timer);
-        resolve(makeConnection(() => active, peer));
-      });
-    });
+        resolve({ code: control.code, conn: connection });
+      } else if (control.t === 'peerJoined') {
+        handlers.onPeerJoined();
+      } else if (control.t === 'peerLeft') {
+        handlers.onPeerLeft();
+      } else if (control.t === 'error') {
+        const message =
+          typeof control.message === 'string' ? control.message : ERR_SERVER;
+        if (connected) handlers.onFatal(message);
+        else
+          fail(
+            message === 'Sala não encontrada. Confira o código.'
+              ? ERR_NOT_FOUND
+              : message,
+          );
+      } else {
+        const message = parseMsg(raw);
+        if (!message) return;
+        if (message.t === 'bye') {
+          intentionallyClosed = true;
+          handlers.onPeerLeft();
+          socket.close();
+        } else {
+          handlers.onMessage(message);
+        }
+      }
+    };
+    socket.onerror = () => {
+      if (connected && !fatalReported) {
+        fatalReported = true;
+        handlers.onFatal(ERR_SERVER);
+      } else {
+        fail(ERR_SERVER);
+      }
+    };
+    socket.onclose = () => {
+      clearTimeout(timer);
+      if (!completed) {
+        completed = true;
+        reject(new Error(ERR_SERVER));
+      } else if (connected && !intentionallyClosed && !fatalReported) {
+        fatalReported = true;
+        handlers.onFatal(ERR_SERVER);
+      }
+    };
   });
+};
+
+export async function createRoom(handlers: Handlers): Promise<RoomResult> {
+  return connectRoom({ t: 'create' }, handlers);
+}
+
+export async function joinRoom(
+  rawCode: string,
+  handlers: Handlers,
+): Promise<Connection> {
+  const code = normalizeCode(rawCode);
+  if (code.length !== CODE_LEN)
+    throw new Error('Digite o código de 5 caracteres da sala.');
+  const { conn } = await connectRoom({ t: 'join', code }, handlers);
+  return conn;
 }

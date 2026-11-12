@@ -20,6 +20,7 @@ import {
   type Profile,
 } from '../../src/shop/types';
 import type { Db, Query } from './db';
+import type { BattleHub } from './battle';
 
 const ONLINE_WINDOW_MS = 25_000;
 const MAX_FRIENDS = 100;
@@ -123,6 +124,7 @@ export interface AppOptions {
   /** Libera a rota de compra real SIMULADA. Em produção, troque por validação de recibo (App Store / Play). */
   allowSimulatedIap: boolean;
   corsOrigin?: string;
+  battleHub?: BattleHub;
 }
 
 type AuthedRequest = Request & { userId: number };
@@ -156,6 +158,19 @@ export function createApp(db: Db, opts: AppOptions) {
 
   app.get('/api/health', (_req, res) => void res.json({ ok: true }));
   app.get('/api/catalog', (_req, res) => void res.json({ items: ITEMS, coinPacks: COIN_PACKS }));
+
+  app.post(
+    '/api/battle/ticket',
+    authed(async (req, res) => {
+      if (!opts.battleHub) throw new HttpError(503, 'network', 'Servidor de partidas indisponível.');
+      const [user] = await db.query<{ code: string; name: string }>(
+        'SELECT code, name FROM users WHERE id = $1',
+        [req.userId],
+      );
+      if (!user) throw new HttpError(401, 'unauthorized', 'Sessão inválida.');
+      res.status(201).json({ ticket: opts.battleHub.issueTicket(user.code, user.name) });
+    }),
+  );
 
   // ---------- Conta ----------
   app.post(

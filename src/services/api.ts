@@ -5,7 +5,6 @@ import {
   itemById,
   MAX_RUN_SCORE,
   packById,
-  STARTER_KIT,
 } from '../shop/catalog';
 import {
   cleanPlayerName,
@@ -39,15 +38,19 @@ export interface Backend {
   equipBoard(boardId: string): Promise<Profile>;
   consume(itemId: string): Promise<Profile>;
   heartbeat(score: number): Promise<void>;
+  openBattleSocket(): Promise<WebSocket>;
   listFriends(): Promise<Friend[]>;
   addFriend(code: string): Promise<Friend[]>;
   removeFriend(code: string): Promise<Friend[]>;
 }
 
+const DEFAULT_API_URL = 'https://tycoon-game-api-leohamil31.onrender.com';
+
 const API_URL: string | undefined = (() => {
   const g = globalThis as { TYCOON_API_URL?: string; process?: { env?: Record<string, string | undefined> } };
   const url = g.TYCOON_API_URL ?? g.process?.env?.EXPO_PUBLIC_API_URL;
-  return url ? url.replace(/\/+$/, '') : undefined;
+  if (url) return url.replace(/\/+$/, '');
+  return typeof __DEV__ !== 'undefined' && __DEV__ ? undefined : DEFAULT_API_URL;
 })();
 
 const TOKEN_KEY = '@tycoon/token_v1';
@@ -101,6 +104,11 @@ function remoteBackend(baseUrl: string): Backend {
     consume: (itemId) => request('POST', '/inventory/consume', { itemId }),
     async heartbeat(score) {
       await request('POST', '/presence', { score: Math.floor(score) });
+    },
+    async openBattleSocket() {
+      const { ticket } = await request<{ ticket: string }>('POST', '/battle/ticket');
+      const wsBase = baseUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+      return new WebSocket(`${wsBase}/battle?ticket=${encodeURIComponent(ticket)}`);
     },
     listFriends: () => request('GET', '/friends'),
     addFriend: (code) => request('POST', '/friends', { code }),
@@ -165,9 +173,9 @@ function localBackend(): Backend {
           profile: {
             userId: randomCode(),
             name: cleanPlayerName(name),
-            coins: 100,
+            coins: 0,
             best: 0,
-            inventory: { ...STARTER_KIT },
+            inventory: {},
             boards: [DEFAULT_BOARD],
             equipped: DEFAULT_BOARD,
           },
@@ -226,6 +234,9 @@ function localBackend(): Backend {
       return save();
     },
     async heartbeat() {},
+    async openBattleSocket() {
+      throw new ApiError('network', 'Partidas e amigos precisam do servidor online configurado.');
+    },
     async listFriends() {
       const now = Date.now();
       return need()
