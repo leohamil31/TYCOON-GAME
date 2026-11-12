@@ -61,7 +61,7 @@ export function ChestModal({ visible, onClose }: { visible: boolean; onClose: ()
       ]),
     );
     wobble.start();
-    const [r] = await Promise.all([openChest(), new Promise((res) => setTimeout(res, 650))]);
+    const [r] = await Promise.all([openChest(), new Promise<void>((res) => setTimeout(() => res(), 650))]);
     wobble.stop();
     shake.setValue(0);
     if (typeof r === 'string') {

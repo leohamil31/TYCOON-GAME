@@ -75,7 +75,41 @@ export function haptic(kind: keyof typeof VIBE | number[]) {
 }
 
 // ---------------------------------------------------------------- Web Audio
-type Ctx = AudioContext;
+// Tipos mínimos do Web Audio (o tsconfig do React Native não inclui os tipos do navegador).
+type OscillatorType = 'sine' | 'square' | 'sawtooth' | 'triangle';
+type BiquadFilterType = 'lowpass' | 'highpass' | 'bandpass';
+interface Param {
+  value: number;
+  setValueAtTime(v: number, t: number): void;
+  exponentialRampToValueAtTime(v: number, t: number): void;
+}
+interface AudioNodeLike {
+  connect(n: AudioNodeLike | unknown): void;
+}
+interface GainNode extends AudioNodeLike {
+  gain: Param;
+}
+interface AudioBuffer {
+  getChannelData(ch: number): Float32Array;
+}
+interface Ctx {
+  state: string;
+  currentTime: number;
+  sampleRate: number;
+  destination: unknown;
+  resume(): Promise<void>;
+  createGain(): GainNode;
+  createDynamicsCompressor(): AudioNodeLike;
+  createBuffer(ch: number, len: number, rate: number): AudioBuffer;
+  createOscillator(): AudioNodeLike & { type: OscillatorType; frequency: Param; start(t: number): void; stop(t: number): void };
+  createBiquadFilter(): AudioNodeLike & { type: BiquadFilterType; frequency: Param; Q: Param };
+  createBufferSource(): AudioNodeLike & { buffer: AudioBuffer | null; start(t: number): void; stop(t: number): void };
+}
+interface DocLike {
+  addEventListener(e: string, f: () => void): void;
+  removeEventListener(e: string, f: () => void): void;
+}
+
 let ctx: Ctx | null = null;
 let master: GainNode | null = null;
 let noiseBuf: AudioBuffer | null = null;
@@ -111,15 +145,16 @@ function ensure(): Ctx | null {
 }
 
 // Navegadores só liberam áudio depois de um toque: destrava no primeiro gesto.
-if (Platform.OS === 'web' && typeof document !== 'undefined') {
+const doc = (globalThis as { document?: DocLike }).document;
+if (Platform.OS === 'web' && doc) {
   const unlock = () => {
     gestured = true;
     ensure();
-    document.removeEventListener('pointerdown', unlock);
-    document.removeEventListener('keydown', unlock);
+    doc.removeEventListener('pointerdown', unlock);
+    doc.removeEventListener('keydown', unlock);
   };
-  document.addEventListener('pointerdown', unlock);
-  document.addEventListener('keydown', unlock);
+  doc.addEventListener('pointerdown', unlock);
+  doc.addEventListener('keydown', unlock);
 }
 
 /** Nota com envelope rápido (ataque curto, decaimento exponencial). */
