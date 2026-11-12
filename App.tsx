@@ -28,7 +28,7 @@ export default function App() {
       <ProfileProvider>
         {/* SafeAreaView de react-native-safe-area-context: o do react-native foi descontinuado e não funciona no Android. */}
         <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
-          <StatusBar barStyle="light-content" backgroundColor={PALETTE.void} />
+          <StatusBar barStyle="light-content" />
           {screen === 'menu' && (
             <MenuScreen
               onSolo={() => setScreen('solo')}
