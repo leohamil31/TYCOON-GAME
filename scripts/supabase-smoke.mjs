@@ -47,7 +47,7 @@ if ((direct.data ?? []).length > 0) throw new Error('RLS falhou: perfil alterado
 ok('RLS bloqueia edição direta');
 
 // Loja expandida: pacote, skin e efeito
-await must('simulated_iap coins_1500', B.rpc('simulated_iap', { p_sku: 'coins_1500' }));
+await must('simulated_iap coins_4000', B.rpc('simulated_iap', { p_sku: 'coins_4000' }));
 const war = await must('purchase pack_war', B.rpc('purchase', { p_item: 'pack_war' }));
 if (war.inventory.garbage !== 5 || war.inventory.freeze !== 3 || war.inventory.rubble !== 3) throw new Error('pacote errado: ' + JSON.stringify(war.inventory));
 const lock = await B.rpc('equip_board', { p_board: 'skin_neon' });
