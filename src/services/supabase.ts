@@ -8,7 +8,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
  * NUNCA coloque a chave secreta (sb_secret_...) aqui.
  * Deixe SUPABASE_URL vazio para voltar ao modo demonstração (tudo salvo só no aparelho).
  */
-export const SUPABASE_URL = '';
+export const SUPABASE_URL = 'https://smraoeohikgxcvvbcqip.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_qoJjBU7C3ZtiwedouCDXMQ_MjGAhSoT';
 
 export const supabase: SupabaseClient | null = SUPABASE_URL
