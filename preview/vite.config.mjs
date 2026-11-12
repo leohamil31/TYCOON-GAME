@@ -14,7 +14,7 @@ export default defineConfig({
   },
   server: { port: 5173, fs: { allow: [path.resolve(import.meta.dirname, '..')] } },
   resolve: {
-    extensions: ['.web.tsx', '.web.ts', '.tsx', '.ts', '.js', '.json'],
+    extensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.js', '.json'],
     alias: {
       'react-native': 'react-native-web',
       'react-native-google-mobile-ads': here('stubs.ts'),
