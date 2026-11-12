@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { alpha, glass, gradient, PALETTE, USE_NATIVE_DRIVER } from '../theme';
 import { AnimatedIcon, type Motion } from './AnimatedIcon';
 
@@ -112,6 +112,10 @@ export function GlassButton({
           },
         ]}
       >
+        {Platform.OS !== 'web' && (
+          // Sem degradê CSS no app: um reflexo na metade de cima dá o volume do botão.
+          <View pointerEvents="none" style={[styles.nativeSheen, { backgroundColor: alpha(tone, 0.16) }]} />
+        )}
         {icon && (
           <View style={[styles.iconWrap, { backgroundColor: alpha(tone, 0.28) }]}>
             <AnimatedIcon glyph={icon} size={compact ? 22 : 28} motion={iconMotion} speed={1500} />
@@ -148,7 +152,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     overflow: 'hidden',
     shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    elevation: 0, // translúcido: no Android a elevation vira uma mancha escura
   },
   compact: { paddingVertical: 10, borderRadius: 16, minHeight: 52 },
   iconWrap: {
@@ -162,6 +166,7 @@ const styles = StyleSheet.create({
   texts: { flex: 1 },
   title: { color: '#f8fafc', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },
   sub: { color: 'rgba(226,232,240,0.75)', fontSize: 12, marginTop: 2 },
+  nativeSheen: { position: 'absolute', left: 0, right: 0, top: 0, height: '50%', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   shine: {
     position: 'absolute',
     top: -20,

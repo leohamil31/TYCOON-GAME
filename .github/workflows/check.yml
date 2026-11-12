@@ -1,0 +1,31 @@
+name: Checagens
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**']
+  workflow_dispatch:
+
+jobs:
+  # Tipos (TypeScript) e testes do app.
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit -p .
+      - run: npx jest --ci
+
+  # Teste real do servidor Supabase (pula sozinho se a URL estiver vazia).
+  servidor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund --no-save --prefix scripts @supabase/supabase-js@2
+      - run: node scripts/supabase-smoke.mjs

@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef } from 'react';
 import { Animated, Easing, Text, View, type TextStyle } from 'react-native';
-import { USE_NATIVE_DRIVER } from '../theme';
+import { tightText, USE_NATIVE_DRIVER } from '../theme';
 
 const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -34,6 +34,7 @@ function Digit({ digit, h, w, fontSize, color, glow }: DigitProps) {
     fontSize,
     fontWeight: '900',
     color,
+    ...tightText,
     ...(glow ? { textShadowColor: glow, textShadowRadius: 12, textShadowOffset: { width: 0, height: 0 } } : null),
   };
 

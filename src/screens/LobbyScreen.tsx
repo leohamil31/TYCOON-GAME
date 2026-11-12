@@ -32,6 +32,8 @@ interface Props {
   onJoin: (code: string, name: string) => void;
   onStart: () => void;
   onBack: () => void;
+  /** Aviso do desafio entre amigos (convite enviado/entrando na sala). */
+  notice?: string | null;
 }
 
 const webGlobal = globalThis as {
@@ -56,7 +58,7 @@ function Dots() {
   return <Text style={styles.waiting}>{'.'.repeat(n)}</Text>;
 }
 
-export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoin, onStart, onBack }: Props) {
+export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoin, onStart, onBack, notice }: Props) {
   const [name, setName] = useState(DEFAULT_NAME);
   const [joinCode, setJoinCode] = useState(initialCode);
   const [copied, setCopied] = useState<string | null>(null);
@@ -102,6 +104,13 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
               <AnimatedIcon glyph="⚔️" size={34} motion="wiggle" speed={1400} />
               <Text style={styles.heading}>BATALHA ONLINE</Text>
             </View>
+
+            {notice && (
+              <View style={[styles.card, glass, styles.notice]}>
+                <ActivityIndicator color={NEON.pink} />
+                <Text style={styles.noticeText}>{notice}</Text>
+              </View>
+            )}
 
             {!inRoom && (
               <>
@@ -279,5 +288,7 @@ const styles = StyleSheet.create({
   waiting: { color: '#64748b', fontSize: 16, fontWeight: '800', width: 20 },
   status: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
   statusText: { color: '#cbd5e1', marginLeft: 10, fontSize: 14 },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 10, borderColor: 'rgba(244,114,182,0.6)' },
+  noticeText: { color: '#fce7f3', fontWeight: '800', fontSize: 14, flex: 1 },
   error: { color: '#fca5a5', textAlign: 'center', marginTop: 14, fontSize: 14, fontWeight: '700' },
 });

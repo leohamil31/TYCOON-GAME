@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
-import { USE_NATIVE_DRIVER } from '../theme';
+import { tightText, USE_NATIVE_DRIVER } from '../theme';
 
 export type Motion = 'float' | 'pulse' | 'spin' | 'wiggle';
 
@@ -60,7 +60,7 @@ export function AnimatedIcon({
           : [{ rotate: t.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '12deg'] }) }];
 
   return (
-    <Animated.Text style={[{ fontSize: size, lineHeight: size * 1.2, transform }, style as object]}>
+    <Animated.Text style={[{ fontSize: size, lineHeight: size * 1.2, textAlign: 'center', transform }, tightText, style as object]}>
       {glyph}
     </Animated.Text>
   );
