@@ -9,15 +9,15 @@ import { Odometer } from './Odometer';
 const ROW_H = 46;
 const MINI = 4;
 
-const MiniBoard = memo(function MiniBoard({ grid }: { grid: Grid | null }) {
+export const MiniBoard = memo(function MiniBoard({ grid, cell = MINI }: { grid: Grid | null; cell?: number }) {
   return (
-    <View style={styles.mini}>
+    <View style={[styles.mini, { minWidth: cell * 10, minHeight: cell * 10 }]}>
       {(grid ?? []).map((row, r) => (
         <View key={r} style={{ flexDirection: 'row' }}>
           {row.map((v, c) => (
             <View
               key={c}
-              style={{ width: MINI, height: MINI, backgroundColor: v === null ? 'rgba(255,255,255,0.06)' : BLOCK_COLORS[v] }}
+              style={{ width: cell, height: cell, backgroundColor: v === null ? 'rgba(255,255,255,0.06)' : BLOCK_COLORS[v] }}
             />
           ))}
         </View>

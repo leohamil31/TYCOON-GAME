@@ -30,6 +30,11 @@ interface Props {
   showShop?: boolean;
   /** Quantos botões dividem a largura (para alinhar duas fileiras). */
   slots?: number;
+  /** Tamanho mínimo do botão (px). */
+  minSize?: number;
+  gap?: number;
+  /** Desenha um separador depois deste índice (power-ups | ataques). */
+  divideAfter?: number;
 }
 
 function Chip({ chip, size, onPress }: { chip: PowerChip; size: number; onPress: () => void }) {
@@ -131,14 +136,17 @@ function Chip({ chip, size, onPress }: { chip: PowerChip; size: number; onPress:
 }
 
 /** Barra de power-ups da partida (solo e online). Item sem estoque abre a loja. */
-export function PowerBar({ chips, onUse, onShop, width, compact, showShop = true, slots }: Props) {
-  const gap = 8;
+export function PowerBar({ chips, onUse, onShop, width, compact, showShop = true, slots, minSize = 50, gap = 8, divideAfter }: Props) {
   const per = slots ?? chips.length + (showShop ? 1 : 0);
-  const size = Math.max(50, Math.min(compact ? 64 : 74, (width - gap * (per - 1)) / per));
+  const dividers = divideAfter !== undefined ? 1 : 0;
+  const size = Math.max(minSize, Math.min(compact ? 64 : 74, (width - gap * (per - 1) - dividers * (gap + 2)) / per));
   return (
     <View style={[styles.bar, { gap }]}>
-      {chips.map((c) => (
-        <Chip key={c.id} chip={c} size={size} onPress={() => (c.count <= 0 && !c.active ? onShop() : onUse(c.id))} />
+      {chips.map((c, i) => (
+        <React.Fragment key={c.id}>
+          {divideAfter === i && <View style={[styles.divider, { height: size * 0.7 }]} />}
+          <Chip chip={c} size={size} onPress={() => (c.count <= 0 && !c.active ? onShop() : onUse(c.id))} />
+        </React.Fragment>
       ))}
       {showShop && (
       <Chip
@@ -152,7 +160,8 @@ export function PowerBar({ chips, onUse, onShop, width, compact, showShop = true
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' },
+  bar: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
+  divider: { width: 2, borderRadius: 1, backgroundColor: 'rgba(253,164,175,0.45)' },
   chip: {
     aspectRatio: 1,
     borderRadius: 18,

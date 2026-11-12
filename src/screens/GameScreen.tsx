@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { ClearEffects, FloatScore } from '../components/ClearEffects';
 import { GameOverModal, type RescueOption } from '../components/GameOverModal';
-import { LiveScoreboard } from '../components/LiveScoreboard';
+import { BattleHud } from '../components/BattleHud';
 import { Block, PopIn, PieceView, TrayPiece } from '../components/Piece';
 import { PowerBar, type PowerChip } from '../components/PowerBar';
 import { ScoreHud } from '../components/ScoreHud';
@@ -90,8 +90,8 @@ const TONES: Record<PowerupId | AttackId, string> = {
 const SHORT: Record<PowerupId | AttackId, string> = {
   boost_x2: 'x2',
   bomb: 'Bomba',
-  reroll: 'Nova mão',
-  undo: 'Desfazer',
+  reroll: 'Trocar',
+  undo: 'Voltar',
   shield: 'Escudo',
   garbage: 'Lixo',
   freeze: 'Gelo',
@@ -163,7 +163,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   // ------------------------------------------------------------- layout responsivo
   const showFooter = mode === 'solo' && !!state && !state.adsRemoved;
   const landscape = W >= 760 && W > H * 1.2;
-  const hudH = 84; // ScoreHud: 64 + margens
+  // Batalha usa uma faixa compacta (BattleHud) no lugar do HUD + placar: sobra espaço para a arena.
+  const hudH = battle ? 76 : 84; // ScoreHud: 64 + margens
   const boardBox = PAD * 2 + 10; // moldura + borda inferior 3D
   let boardSize: number;
   let sideW: number;
@@ -172,12 +173,11 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     boardSize = Math.min(H - hudH - footerH - boardBox - 28, W * 0.5, 620);
     sideW = Math.min(440, W - boardSize - boardBox - 72);
   } else {
-    const scoreboardH = battle ? 146 : 0;
-    const powerH = battle ? 160 : 92; // botões (+ fileira de ataques na batalha) + espaçamento
-    const hintH = 32;
-    const avail = H - hudH - scoreboardH - powerH - footerH - hintH - boardBox - 12;
+    const powerH = battle ? 72 : 92; // uma fileira de botões + espaçamento
+    const hintH = battle ? 22 : 32;
+    const avail = H - hudH - powerH - footerH - hintH - boardBox - 12;
     // A bandeja ocupa ~32% do lado do tabuleiro (peças com 5 casas a ~64% do tamanho da casa).
-    boardSize = Math.min(W - 24 - boardBox, 560, (avail - 20) / 1.32);
+    boardSize = Math.min(W - 14 - boardBox, 560, (avail - 20) / 1.32);
     sideW = boardSize + boardBox;
   }
   boardSize = Math.floor(Math.max(200, boardSize));
@@ -435,7 +435,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     shake.setValue(0);
     Animated.sequence(
       [1, -0.8, 0.6, -0.4, 0.2, 0].map((k) =>
-        Animated.timing(shake, { toValue: k * power, duration: 45, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(shake, { toValue: k * power, duration: 30, useNativeDriver: USE_NATIVE_DRIVER }),
       ),
     ).start();
   }, [fx, shake]);
@@ -444,7 +444,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const hit = useRef(new Animated.Value(0)).current;
   const flashHit = useCallback(() => {
     hit.setValue(1);
-    Animated.timing(hit, { toValue: 0, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: USE_NATIVE_DRIVER }).start();
+    Animated.timing(hit, { toValue: 0, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: USE_NATIVE_DRIVER }).start();
   }, [hit]);
 
   // Aplica um ataque por vez (cada um parte do tabuleiro já atualizado pelo anterior).
@@ -657,17 +657,22 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     </Text>
   );
 
-  const barW = landscape ? sideW : Math.min(W - 24, boardSize + boardBox + 40);
-  const power = (
-    <View style={{ alignItems: 'center', gap: 10 }}>
-      <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={H < 640 || !!battle} slots={5} />
-      {battle && (
-        <View style={styles.attackRow}>
-          <Text style={styles.attackLabel}>⚔️ ATAQUES</Text>
-          <PowerBar chips={attackChips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact showShop={false} slots={5} />
-        </View>
-      )}
-    </View>
+  const barW = landscape ? sideW : Math.min(W - 16, boardSize + boardBox + 40);
+  // Batalha: power-ups e ataques numa fileira só (item zerado abre a loja).
+  const power = battle ? (
+    <PowerBar
+      chips={[...chips, ...attackChips]}
+      onUse={applyItem}
+      onShop={() => setShopOpen(true)}
+      width={barW}
+      compact
+      showShop={false}
+      minSize={40}
+      gap={5}
+      divideAfter={chips.length}
+    />
+  ) : (
+    <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={H < 640} slots={5} />
   );
 
   const battleOver = battle && state.status === 'over' && !locked;
@@ -678,22 +683,26 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       <ThemedBackdrop themeId={theme.id} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, gradient(180, ['rgba(2,6,23,0.35)', 'rgba(2,6,23,0)', 'rgba(2,6,23,0.55)'], 'rgba(2,6,23,0.15)')]} />
 
-      <View style={styles.hudWrap}>
-        <ScoreHud
-          score={state.score}
-          best={state.best}
+      {battle ? (
+        <BattleHud
+          me={battle.me}
+          opp={battle.opp}
+          timeLeft={battle.timeLeft}
+          myScore={state.score}
           combo={combo}
           coins={profile?.coins}
           onBack={exit}
-          title={battle ? 'BATALHA' : 'TYCOON GAME'}
         />
-      </View>
+      ) : (
+        <View style={styles.hudWrap}>
+          <ScoreHud score={state.score} best={state.best} combo={combo} coins={profile?.coins} onBack={exit} title="TYCOON GAME" />
+        </View>
+      )}
 
       {landscape ? (
         <View style={styles.landscape}>
           {board}
           <View style={[styles.side, { width: sideW }]}>
-            {battle && <LiveScoreboard me={battle.me} opp={battle.opp} timeLeft={battle.timeLeft} />}
             {tray}
             {hint}
             <View style={{ height: 12 }} />
@@ -702,15 +711,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         </View>
       ) : (
         <View style={styles.portrait}>
-          {battle && (
-            <View style={{ alignSelf: 'center', maxWidth: 600, width: '100%' }}>
-              <LiveScoreboard me={battle.me} opp={battle.opp} timeLeft={battle.timeLeft} />
-            </View>
-          )}
           {board}
           {hint}
           {tray}
-          <View style={{ height: 12 }} />
+          <View style={{ height: battle ? 8 : 12 }} />
           {power}
         </View>
       )}
@@ -876,7 +880,7 @@ const styles = StyleSheet.create({
     borderColor: '#0b1022',
   },
   comboText: { color: '#fff', fontWeight: '900', fontSize: 12 },
-  hint: { color: 'rgba(203,213,225,0.75)', fontSize: 11.5, marginVertical: 8, textAlign: 'center', paddingHorizontal: 12 },
+  hint: { color: 'rgba(203,213,225,0.75)', fontSize: 11.5, marginVertical: 5, textAlign: 'center', paddingHorizontal: 12 },
   tray: {
     flexDirection: 'row',
     alignItems: 'center',

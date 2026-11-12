@@ -64,7 +64,7 @@ const REASONS: Record<BattleResult['reason'], string> = {
 export function ResultOverlay({ result, myName, oppName, canRematch, isHost, friendLeft, coins = 0, onRematch, onExit }: ResultProps) {
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(enter, { toValue: 1, friction: 6, tension: 90, useNativeDriver: USE_NATIVE_DRIVER }).start();
+    Animated.spring(enter, { toValue: 1, friction: 7, tension: 200, useNativeDriver: USE_NATIVE_DRIVER }).start();
   }, [enter]);
 
   const win = result.outcome === 'win';

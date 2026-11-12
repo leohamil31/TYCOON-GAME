@@ -20,7 +20,7 @@ function Digit({ digit, h, w, fontSize, color, glow }: DigitProps) {
   useEffect(() => {
     Animated.timing(y, {
       toValue: -digit * h,
-      duration: 520,
+      duration: 320,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: USE_NATIVE_DRIVER,
     }).start();

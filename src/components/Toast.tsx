@@ -19,9 +19,9 @@ function ToastImpl({ msg }: { msg: ToastMsg }) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.sequence([
-      Animated.spring(v, { toValue: 1, friction: 7, tension: 140, useNativeDriver: USE_NATIVE_DRIVER }),
-      Animated.delay(1500),
-      Animated.timing(v, { toValue: 0, duration: 260, easing: Easing.in(Easing.quad), useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.spring(v, { toValue: 1, friction: 8, tension: 260, useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.delay(1100),
+      Animated.timing(v, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: USE_NATIVE_DRIVER }),
     ]).start();
   }, [v]);
 

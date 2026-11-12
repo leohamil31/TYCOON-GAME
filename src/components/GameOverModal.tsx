@@ -109,7 +109,7 @@ export function GameOverModal({
     if (!visible) return;
     setError(null);
     enter.setValue(0);
-    Animated.spring(enter, { toValue: 1, friction: 6, tension: 80, useNativeDriver: USE_NATIVE_DRIVER }).start();
+    Animated.spring(enter, { toValue: 1, friction: 7, tension: 200, useNativeDriver: USE_NATIVE_DRIVER }).start();
   }, [visible, enter]);
 
   const revive = async () => {

@@ -51,10 +51,10 @@ function Explosion({ fx, cell, boardSize }: { fx: ClearFx; cell: number; boardSi
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(t, { toValue: 1, duration: 620, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
+      Animated.timing(t, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
       Animated.sequence([
-        Animated.delay(120),
-        Animated.timing(label, { toValue: 1, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: native }),
+        Animated.delay(50),
+        Animated.timing(label, { toValue: 1, duration: 560, easing: Easing.out(Easing.quad), useNativeDriver: native }),
       ]),
     ]).start();
   }, [t, label]);
@@ -174,9 +174,9 @@ function LineClear({ fx, cell, boardSize, fxStyle }: { fx: ClearFx; cell: number
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(t, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
-      Animated.timing(beam, { toValue: 1, duration: 480, easing: Easing.out(Easing.quad), useNativeDriver: native }),
-      Animated.timing(banner, { toValue: 1, duration: 1250, easing: Easing.out(Easing.quad), useNativeDriver: native }),
+      Animated.timing(t, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
+      Animated.timing(beam, { toValue: 1, duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: native }),
+      Animated.timing(banner, { toValue: 1, duration: 760, easing: Easing.out(Easing.quad), useNativeDriver: native }),
     ]).start();
   }, [t, beam, banner]);
 
@@ -237,7 +237,7 @@ function LineClear({ fx, cell, boardSize, fxStyle }: { fx: ClearFx; cell: number
       )}
 
       {fx.cleared.map(({ r, c, color }, i) => (
-        <Particle key={`${r}-${c}`} t={t} r={r} c={c} i={i} color={color} cell={cell} style={fxStyle} sweep={fx.rows.includes(r) ? c / 40 : r / 40} />
+        <Particle key={`${r}-${c}`} t={t} r={r} c={c} i={i} color={color} cell={cell} style={fxStyle} sweep={fx.rows.includes(r) ? c / 70 : r / 70} />
       ))}
 
       {/* Faixa de elogio + combo + pontos */}
@@ -408,7 +408,7 @@ export function FloatScore({ placed, cell }: { placed: PlacedFx | null; cell: nu
 function FloatImpl({ placed, cell }: { placed: PlacedFx; cell: number }) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(v, { toValue: 1, duration: 800, easing: Easing.out(Easing.quad), useNativeDriver: native }).start();
+    Animated.timing(v, { toValue: 1, duration: 520, easing: Easing.out(Easing.quad), useNativeDriver: native }).start();
   }, [v]);
   const n = placed.cells.length;
   const cy = placed.cells.reduce((a, [r]) => a + r, 0) / n;

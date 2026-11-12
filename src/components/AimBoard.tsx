@@ -51,7 +51,7 @@ export function AimBoard({ visible, grid, mode, title, onConfirm, onCancel }: Pr
     if (!visible || !grid) return;
     setAim(bestSpot(grid, mode));
     enter.setValue(0);
-    Animated.spring(enter, { toValue: 1, friction: 7, tension: 110, useNativeDriver: USE_NATIVE_DRIVER }).start();
+    Animated.spring(enter, { toValue: 1, friction: 8, tension: 220, useNativeDriver: USE_NATIVE_DRIVER }).start();
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 520, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),

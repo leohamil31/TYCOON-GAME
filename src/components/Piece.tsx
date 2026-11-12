@@ -229,7 +229,7 @@ export function PopIn({ size, delay = 0, children }: { size: number; delay?: num
   useEffect(() => {
     Animated.sequence([
       Animated.delay(delay),
-      Animated.spring(v, { toValue: 1, friction: 4, tension: 220, useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.spring(v, { toValue: 1, friction: 6, tension: 380, useNativeDriver: USE_NATIVE_DRIVER }),
     ]).start();
   }, [v, delay]);
   return (
@@ -280,8 +280,8 @@ export function TrayPiece({
   useEffect(() => {
     enter.setValue(0);
     Animated.sequence([
-      Animated.delay(index * 90),
-      Animated.spring(enter, { toValue: 1, friction: 5, tension: 120, useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.delay(index * 40),
+      Animated.spring(enter, { toValue: 1, friction: 7, tension: 280, useNativeDriver: USE_NATIVE_DRIVER }),
     ]).start();
   }, [piece.id, index, enter]);
 
