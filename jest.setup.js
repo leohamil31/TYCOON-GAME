@@ -1,8 +1,15 @@
 /* Mocks dos módulos nativos para os testes em Node. */
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
+jest.mock('@react-native-async-storage/async-storage', () => {
+  const mem = new Map();
+  const api = {
+    getItem: async (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: async (k, v) => void mem.set(k, v),
+    removeItem: async (k) => void mem.delete(k),
+    clear: async () => mem.clear(),
+  };
+  return { __esModule: true, default: api, ...api };
+});
 jest.mock('react-native-google-mobile-ads', () => ({
   __esModule: true,
   default: () => ({ initialize: async () => {} }),
