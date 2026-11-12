@@ -16,6 +16,8 @@ interface ProfileCtx {
   reload: () => void;
   setLiveScore: (score: number) => void;
   reportRun: (runId: string, score: number) => Result;
+  /** Resultado de batalha: moedas + vitória no ranking (cai para reportRun sem servidor). */
+  reportBattle: (matchId: string, score: number, won: boolean) => Result;
   purchase: (itemId: string, qty?: number) => Result;
   simulatedIap: (sku: string) => Result;
   equipBoard: (boardId: string) => Result;
@@ -92,6 +94,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     liveScore.current = sc;
   }, []);
   const reportRun = useCallback((runId: string, score: number) => run(() => backend.reportRun(runId, score)), [run]);
+  const reportBattle = useCallback(
+    (matchId: string, score: number, won: boolean) =>
+      run(() => (backend.reportBattle ? backend.reportBattle(matchId, score, won) : backend.reportRun(matchId, score))),
+    [run],
+  );
   const purchase = useCallback((itemId: string, qty?: number) => run(() => backend.purchase(itemId, qty)), [run]);
   const simulatedIap = useCallback((sku: string) => run(() => backend.simulatedIap(sku)), [run]);
   const equipBoard = useCallback((boardId: string) => run(() => backend.equipBoard(boardId)), [run]);
@@ -124,6 +131,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       reload,
       setLiveScore,
       reportRun,
+      reportBattle,
       purchase,
       simulatedIap,
       equipBoard,
@@ -133,7 +141,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       addFriend,
       removeFriend,
     }),
-    [profile, friends, loading, loadError, reload, setLiveScore, reportRun, purchase, simulatedIap, equipBoard, consume, rename, refreshFriends, addFriend, removeFriend],
+    [profile, friends, loading, loadError, reload, setLiveScore, reportRun, reportBattle, purchase, simulatedIap, equipBoard, consume, rename, refreshFriends, addFriend, removeFriend],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createRoom, joinRoom, type BattleMsg, type Connection, type Handlers } from '../services/battle';
+import { createRoom, joinRoom, type Attack, type BattleMsg, type Connection, type Handlers } from '../services/battle';
 import type { BattleResult, PlayerView, Snapshot } from '../types';
 
 export const BATTLE_SECONDS = 120;
 const COUNTDOWN = 3;
+
+/** Ataque recebido do adversário, na fila para ser aplicado no tabuleiro. */
+export type IncomingAttack = Attack & { id: string; from: string };
+
+/** Intervalo mínimo entre ataques enviados (evita spam). */
+export const ATTACK_COOLDOWN_MS = 2500;
 
 export type Phase = 'idle' | 'connecting' | 'lobby' | 'countdown' | 'playing' | 'finished';
 type Role = 'host' | 'guest';
@@ -26,6 +32,8 @@ export function useBattle() {
   const [result, setResult] = useState<BattleResult | null>(null);
   /** Id único da partida atual (usado para creditar moedas uma única vez). */
   const [matchId, setMatchId] = useState('');
+  const [incoming, setIncoming] = useState<IncomingAttack[]>([]);
+  const lastAttack = useRef(0);
 
   const conn = useRef<Connection | null>(null);
   const roleRef = useRef<Role | null>(null);
@@ -63,6 +71,7 @@ export function useBattle() {
     setMe((m) => blank(m.name));
     setOpp((o) => (o ? blank(o.name) : o));
     setResult(null);
+    setIncoming([]);
     setTimeLeft(BATTLE_SECONDS);
     setCount(COUNTDOWN);
     setRound((r) => r + 1);
@@ -77,6 +86,10 @@ export function useBattle() {
         setOpp((o) => (o ? { ...o, name: msg.name } : blank(msg.name)));
       } else if (msg.t === 'start') {
         if (roleRef.current === 'guest') beginRound();
+      } else if (msg.t === 'attack') {
+        if (phaseRef.current !== 'playing') return;
+        const { t: _t, ...attack } = msg;
+        setIncoming((q) => (q.some((a) => a.id === msg.id) ? q : [...q.slice(-9), { ...attack, from: oppRef.current?.name ?? 'Amigo' }]));
       } else if (msg.t === 'state') {
         if (phaseRef.current === 'finished') return;
         setOpp((o) => ({ ...(o ?? blank('Amigo')), score: msg.score, combo: msg.combo, over: msg.over, grid: msg.grid }));
@@ -187,6 +200,24 @@ export function useBattle() {
     conn.current?.send({ t: 'state', ...s });
   }, []);
 
+  /** Envia um ataque. Retorna false se estiver em recarga ou fora da partida. */
+  const sendAttack = useCallback((a: Attack, auto = false): boolean => {
+    if (phaseRef.current !== 'playing' || !conn.current) return false;
+    const now = Date.now();
+    // Ataques comprados têm recarga; o lixo automático dos combos não.
+    if (!auto) {
+      if (now - lastAttack.current < ATTACK_COOLDOWN_MS) return false;
+      lastAttack.current = now;
+    }
+    conn.current.send({ t: 'attack', id: `${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, ...a } as BattleMsg);
+    return true;
+  }, []);
+
+  /** Remove da fila os ataques já aplicados. */
+  const ackAttacks = useCallback((ids: string[]) => {
+    setIncoming((q) => q.filter((a) => !ids.includes(a.id)));
+  }, []);
+
   const leave = useCallback(() => {
     teardown();
     setError(null);
@@ -243,5 +274,5 @@ export function useBattle() {
     if (decided) finish('out');
   }, [phase, me.over, me.score, opp, finish]);
 
-  return { phase, role, code, error, me, opp, timeLeft, count, round, matchId, result, host, join, start, sendState, leave };
+  return { phase, role, code, error, me, opp, timeLeft, count, round, matchId, result, incoming, host, join, start, sendState, sendAttack, ackAttacks, leave };
 }

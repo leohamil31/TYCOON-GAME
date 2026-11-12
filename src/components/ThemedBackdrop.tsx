@@ -305,12 +305,207 @@ function CyberScene({ w, h }: Size) {
   );
 }
 
+
+// ------------------------------------------------------------------ AURORA BOREAL
+function AuroraBand({ i, w, h }: { i: number } & Size) {
+  const v = useLoop(7000 + i * 1800, true);
+  const colors = ['rgba(52,211,153,0.30)', 'rgba(167,139,250,0.26)', 'rgba(45,212,191,0.24)', 'rgba(244,114,182,0.18)'];
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: -w * 0.3,
+        width: w * 1.6,
+        top: h * (0.08 + i * 0.09),
+        height: h * 0.16,
+        borderRadius: h,
+        backgroundColor: colors[i % colors.length],
+        opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.95] }),
+        transform: [
+          { translateX: v.interpolate({ inputRange: [0, 1], outputRange: [-w * 0.12, w * 0.12] }) },
+          { rotate: `${-8 + i * 5}deg` },
+          { scaleY: v.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.25] }) },
+        ],
+      }}
+    />
+  );
+}
+
+function AuroraScene({ w, h }: Size) {
+  return (
+    <>
+      <Bands top={[2, 8, 20]} mid={[6, 22, 40]} bottom={[8, 30, 44]} />
+      {Array.from({ length: 30 }, (_, i) => (
+        <View
+          key={`s${i}`}
+          style={{ position: 'absolute', left: rand(i + 3) * w, top: rand(i + 7) * h * 0.7, width: 2, height: 2, borderRadius: 1, backgroundColor: '#fff', opacity: 0.3 + rand(i) * 0.6 }}
+        />
+      ))}
+      {[0, 1, 2, 3].map((i) => (
+        <AuroraBand key={i} i={i} w={w} h={h} />
+      ))}
+      {/* Montanhas */}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <View
+          key={`m${i}`}
+          style={{
+            position: 'absolute',
+            bottom: -h * 0.12,
+            left: w * (i * 0.25 - 0.2),
+            width: w * 0.55,
+            height: w * 0.55,
+            backgroundColor: i % 2 ? '#04131a' : '#062029',
+            transform: [{ rotate: '45deg' }],
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ ABISMO
+function Bubble({ i, w, h }: { i: number } & Size) {
+  const v = useLoop(6000 + rand(i + 2) * 7000);
+  const s = 4 + rand(i + 5) * 12;
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: rand(i + 11) * w,
+        top: h,
+        width: s,
+        height: s,
+        borderRadius: s,
+        borderWidth: 1.2,
+        borderColor: 'rgba(165,243,252,0.7)',
+        backgroundColor: 'rgba(165,243,252,0.08)',
+        transform: [
+          { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -h - 30] }) },
+          { translateX: v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 14, -6] }) },
+        ],
+      }}
+    />
+  );
+}
+
+function Jelly({ x, y, size, tone, dur }: { x: number; y: number; size: number; tone: string; dur: number }) {
+  const v = useLoop(dur, true);
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        alignItems: 'center',
+        transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [12, -18] }) }],
+      }}
+    >
+      <Animated.View
+        style={{
+          width: size,
+          height: size * 0.6,
+          borderTopLeftRadius: size,
+          borderTopRightRadius: size,
+          backgroundColor: tone,
+          opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.85] }),
+          transform: [{ scaleX: v.interpolate({ inputRange: [0, 1], outputRange: [1.08, 0.92] }) }],
+        }}
+      />
+      <View style={{ flexDirection: 'row', gap: size * 0.12 }}>
+        {[0, 1, 2, 3].map((k) => (
+          <View key={k} style={{ width: 2, height: size * (0.5 + (k % 2) * 0.25), backgroundColor: tone, opacity: 0.45 }} />
+        ))}
+      </View>
+    </Animated.View>
+  );
+}
+
+function AbyssScene({ w, h }: Size) {
+  const ray = useLoop(5000, true);
+  return (
+    <>
+      <Bands top={[6, 40, 70]} mid={[4, 22, 48]} bottom={[2, 8, 22]} />
+      {[0.15, 0.45, 0.72].map((x, i) => (
+        <Animated.View
+          key={`r${i}`}
+          style={{
+            position: 'absolute',
+            left: w * x,
+            top: -h * 0.1,
+            width: w * 0.12,
+            height: h * 0.8,
+            backgroundColor: 'rgba(186,230,253,0.07)',
+            transform: [{ rotate: `${12 - i * 6}deg` }],
+            opacity: ray.interpolate({ inputRange: [0, 1], outputRange: i % 2 ? [0.4, 1] : [1, 0.4] }),
+          }}
+        />
+      ))}
+      <Jelly x={w * 0.12} y={h * 0.3} size={Math.min(70, w * 0.16)} tone="#f0abfc" dur={4200} />
+      <Jelly x={w * 0.72} y={h * 0.5} size={Math.min(54, w * 0.13)} tone="#67e8f9" dur={5200} />
+      {Array.from({ length: 22 }, (_, i) => (
+        <Bubble key={i} i={i} w={w} h={h} />
+      ))}
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ FORJA
+function Ember({ i, w, h }: { i: number } & Size) {
+  const v = useLoop(2600 + rand(i + 4) * 3200);
+  const s = 2 + rand(i + 8) * 4;
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: rand(i + 13) * w,
+        top: h * 0.95,
+        width: s,
+        height: s,
+        borderRadius: s,
+        backgroundColor: i % 3 === 0 ? '#fde68a' : '#fb923c',
+        opacity: v.interpolate({ inputRange: [0, 0.1, 0.8, 1], outputRange: [0, 1, 0.7, 0] }),
+        transform: [
+          { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -h * (0.5 + rand(i) * 0.5)] }) },
+          { translateX: v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, (rand(i + 1) - 0.5) * 60, (rand(i + 2) - 0.5) * 30] }) },
+        ],
+      }}
+    />
+  );
+}
+
+function EmberScene({ w, h }: Size) {
+  return (
+    <>
+      <Bands top={[10, 4, 6]} mid={[38, 10, 8]} bottom={[110, 30, 10]} />
+      <Pulse
+        duration={1800}
+        from={0.35}
+        to={0.75}
+        style={{ position: 'absolute', left: -w * 0.2, right: -w * 0.2, bottom: -h * 0.12, height: h * 0.35, borderRadius: w, backgroundColor: 'rgba(249,115,22,0.35)' }}
+      />
+      {/* Bigorna e vigas da serralheria em silhueta */}
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: h * 0.07, backgroundColor: '#0d0503' }} />
+      <View style={{ position: 'absolute', left: w * 0.08, bottom: h * 0.07, width: w * 0.22, height: h * 0.05, backgroundColor: '#0d0503', borderTopLeftRadius: 30 }} />
+      <View style={{ position: 'absolute', left: w * 0.15, bottom: h * 0.035, width: w * 0.08, height: h * 0.05, backgroundColor: '#0d0503' }} />
+      {[0.62, 0.8].map((x, i) => (
+        <View key={i} style={{ position: 'absolute', left: w * x, bottom: h * 0.07, width: 10, height: h * 0.3, backgroundColor: '#140805' }} />
+      ))}
+      <View style={{ position: 'absolute', left: w * 0.58, bottom: h * 0.36, width: w * 0.34, height: 10, backgroundColor: '#140805' }} />
+      {Array.from({ length: 28 }, (_, i) => (
+        <Ember key={i} i={i} w={w} h={h} />
+      ))}
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ fachada
 interface Props {
   themeId: string;
   /** Pausa/baixa custo em miniaturas: renderiza o mesmo cenário, apenas menor. */
   preview?: boolean;
 }
+
+const SCENES = ['neon', 'space', 'cyber', 'aurora', 'abyss', 'ember'];
 
 function ThemedBackdropImpl({ themeId, preview }: Props) {
   const win = useWindowDimensions();
@@ -329,7 +524,10 @@ function ThemedBackdropImpl({ themeId, preview }: Props) {
       {themeId === 'neon' && <NeonScene w={w} h={h} />}
       {themeId === 'space' && <SpaceScene w={w} h={h} />}
       {themeId === 'cyber' && <CyberScene w={w} h={h} />}
-      {themeId !== 'neon' && themeId !== 'space' && themeId !== 'cyber' && <Background />}
+      {themeId === 'aurora' && <AuroraScene w={w} h={h} />}
+      {themeId === 'abyss' && <AbyssScene w={w} h={h} />}
+      {themeId === 'ember' && <EmberScene w={w} h={h} />}
+      {!SCENES.includes(themeId) && <Background />}
     </View>
   );
 }

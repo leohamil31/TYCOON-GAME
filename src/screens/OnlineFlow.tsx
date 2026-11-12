@@ -18,7 +18,7 @@ export type OnlineStart =
 /** Lobby -> countdown -> match -> result, all driven by `useBattle`. */
 export function OnlineFlow({ onExit, start = { kind: 'lobby' } }: { onExit: () => void; start?: OnlineStart }) {
   const b = useBattle();
-  const { reportRun, profile } = useProfile();
+  const { reportBattle, profile } = useProfile();
   const [notice, setNotice] = useState<string | null>(null);
   const myName = profile?.name ?? 'Jogador';
 
@@ -55,8 +55,8 @@ export function OnlineFlow({ onExit, start = { kind: 'lobby' } }: { onExit: () =
   useEffect(() => {
     if (!b.result || !b.matchId || paid.current === b.matchId) return;
     paid.current = b.matchId;
-    void reportRun(b.matchId, b.result.myScore);
-  }, [b.result, b.matchId, reportRun]);
+    void reportBattle(b.matchId, b.result.myScore, b.result.outcome === 'win');
+  }, [b.result, b.matchId, reportBattle]);
 
   const exit = () => {
     b.leave();
@@ -93,6 +93,9 @@ export function OnlineFlow({ onExit, start = { kind: 'lobby' } }: { onExit: () =
           timeLeft: b.timeLeft,
           locked: b.phase !== 'playing',
           onLocalUpdate: b.sendState,
+          incoming: b.incoming,
+          sendAttack: b.sendAttack,
+          ackAttacks: b.ackAttacks,
         }}
       />
       {b.phase === 'countdown' && <CountdownOverlay count={b.count} oppName={b.opp?.name ?? 'Amigo'} />}

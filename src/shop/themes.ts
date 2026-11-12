@@ -49,6 +49,33 @@ export const THEMES: Record<string, BoardTheme> = {
     frameSide: '#e879f9',
     glow: '#22d3ee',
   },
+  aurora: {
+    id: 'aurora',
+    board: '#071a22',
+    cell: '#0b2530',
+    cellAlt: '#0e2d3a',
+    frameTop: '#6ee7b7',
+    frameSide: '#a78bfa',
+    glow: '#34d399',
+  },
+  abyss: {
+    id: 'abyss',
+    board: '#041526',
+    cell: '#071f36',
+    cellAlt: '#0a2742',
+    frameTop: '#67e8f9',
+    frameSide: '#3b82f6',
+    glow: '#22d3ee',
+  },
+  ember: {
+    id: 'ember',
+    board: '#1c0d08',
+    cell: '#26120b',
+    cellAlt: '#2f170e',
+    frameTop: '#fdba74',
+    frameSide: '#ef4444',
+    glow: '#f97316',
+  },
 };
 
 export const themeFor = (id: string | undefined): BoardTheme => THEMES[id ?? DEFAULT_BOARD] ?? THEMES[DEFAULT_BOARD];

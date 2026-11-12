@@ -26,6 +26,10 @@ interface Props {
   /** Largura disponível: define o tamanho dos botões. */
   width: number;
   compact?: boolean;
+  /** Mostra o botão da loja no fim da fileira. */
+  showShop?: boolean;
+  /** Quantos botões dividem a largura (para alinhar duas fileiras). */
+  slots?: number;
 }
 
 function Chip({ chip, size, onPress }: { chip: PowerChip; size: number; onPress: () => void }) {
@@ -127,20 +131,22 @@ function Chip({ chip, size, onPress }: { chip: PowerChip; size: number; onPress:
 }
 
 /** Barra de power-ups da partida (solo e online). Item sem estoque abre a loja. */
-export function PowerBar({ chips, onUse, onShop, width, compact }: Props) {
+export function PowerBar({ chips, onUse, onShop, width, compact, showShop = true, slots }: Props) {
   const gap = 8;
-  const per = chips.length + 1; // +1 para o botão da loja
+  const per = slots ?? chips.length + (showShop ? 1 : 0);
   const size = Math.max(50, Math.min(compact ? 64 : 74, (width - gap * (per - 1)) / per));
   return (
     <View style={[styles.bar, { gap }]}>
       {chips.map((c) => (
         <Chip key={c.id} chip={c} size={size} onPress={() => (c.count <= 0 && !c.active ? onShop() : onUse(c.id))} />
       ))}
+      {showShop && (
       <Chip
         chip={{ id: 'shop', icon: '🛒', label: 'Loja', count: 1, tone: NEON.gold, noBadge: true }}
         size={size}
         onPress={onShop}
       />
+      )}
     </View>
   );
 }

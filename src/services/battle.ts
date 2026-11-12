@@ -11,8 +11,19 @@ import type { Grid } from '../types';
  * Central WebSocket transport for friend battles. The same room protocol works in web browsers,
  * Android, and iOS, without requiring the players' devices to accept peer-to-peer connections.
  */
+/** Ataques de sabotagem que um jogador manda para o outro. */
+export type AttackKind = 'garbage' | 'freeze' | 'rubble';
+export type Attack =
+  /** Blocos de lixo espalhados (n = quantidade). */
+  | { kind: 'garbage'; n: number }
+  /** Congela a bandeja do adversário por alguns segundos. */
+  | { kind: 'freeze' }
+  /** Bomba de entulho mirada: enche de lixo a área 3x3 em volta de (r, c). */
+  | { kind: 'rubble'; r: number; c: number };
+
 export type BattleMsg =
   | { t: 'hello'; name: string }
+  | ({ t: 'attack'; id: string } & Attack)
   | { t: 'start' }
   | { t: 'state'; score: number; combo: number; over: boolean; grid: Grid }
   | { t: 'bye' };
@@ -74,6 +85,17 @@ export const parseMsg = (raw: unknown): BattleMsg | null => {
         : null;
     case 'start':
       return { t: 'start' };
+    case 'attack': {
+      const id = typeof message.id === 'string' ? message.id.slice(0, 40) : '';
+      if (!id) return null;
+      const cell = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= N - 2;
+      if (message.kind === 'garbage' && Number.isInteger(message.n) && (message.n as number) >= 1 && (message.n as number) <= 8)
+        return { t: 'attack', id, kind: 'garbage', n: message.n as number };
+      if (message.kind === 'freeze') return { t: 'attack', id, kind: 'freeze' };
+      if (message.kind === 'rubble' && cell(message.r) && cell(message.c))
+        return { t: 'attack', id, kind: 'rubble', r: message.r as number, c: message.c as number };
+      return null;
+    }
     case 'bye':
       return { t: 'bye' };
     case 'state':

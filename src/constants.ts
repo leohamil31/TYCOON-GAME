@@ -20,7 +20,13 @@ export const BLOCK_COLORS = [
   '#38bdf8',
   '#8b5cf6',
   '#ec4899',
+  '#64748b', // 7 = entulho/lixo (vem de ataques; nunca aparece nas peças)
 ] as const;
+
+/** Índice de cor dos blocos de lixo/entulho enviados pelo adversário. */
+export const GARBAGE = 7;
+/** Cores usadas nas peças normais (0..6). */
+export const PIECE_COLOR_COUNT = 7;
 
 export const GAME = {
   GRID_SIZE: 10,

@@ -1,4 +1,4 @@
-import { BLOCK_COLORS, GAME } from '../constants';
+import { GAME, GARBAGE, PIECE_COLOR_COUNT } from '../constants';
 import type { Coord, Grid, Piece } from '../types';
 
 const N = GAME.GRID_SIZE;
@@ -146,7 +146,7 @@ export const dealPieces = (grid: Grid): Piece[] => {
   const playable = SHAPES.filter((s) => fits(grid, s));
   const pool = playable.length > 0 ? playable : [[[0, 0]] as Coord[]];
   const count = GAME.PIECES_PER_DEAL;
-  const colors = [...BLOCK_COLORS.keys()].sort(() => Math.random() - 0.5);
+  const colors = Array.from({ length: PIECE_COLOR_COUNT }, (_, i) => i).sort(() => Math.random() - 0.5);
 
   const build = (): Piece[] => {
     const used = new Set<Coord[]>();
@@ -262,3 +262,76 @@ export const fillOf = (grid: Grid): number => fillRatio(grid);
 
 /** True if the piece fits somewhere on the board. */
 export const pieceFits = (grid: Grid, piece: Piece): boolean => fits(grid, piece.cells);
+
+// ---------------------------------------------------------------- bombas e ataques
+const inBounds = (r: number, c: number) => r >= 0 && r < N && c >= 0 && c < N;
+
+/** Casas 3x3 em volta de (r, c) que estão dentro do tabuleiro. */
+export const area3 = (r: number, c: number): [number, number][] => {
+  const out: [number, number][] = [];
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (inBounds(r + dr, c + dc)) out.push([r + dr, c + dc]);
+  return out;
+};
+
+/** Mantém o centro da mira dentro do tabuleiro (a área 3x3 nunca sai da grade). */
+export const clampAim = (r: number, c: number) => ({
+  r: Math.min(N - 2, Math.max(1, Math.round(r))),
+  c: Math.min(N - 2, Math.max(1, Math.round(c))),
+});
+
+/** Bomba mirada: explode a área 3x3 escolhida. */
+export const blastArea = (grid: Grid, r: number, c: number): { grid: Grid; hit: ClearedCell[] } => {
+  const next = grid.map((row) => [...row]);
+  const hit: ClearedCell[] = [];
+  area3(r, c).forEach(([rr, cc]) => {
+    const v = next[rr][cc];
+    if (v !== null) {
+      hit.push({ r: rr, c: cc, color: v });
+      next[rr][cc] = null;
+    }
+  });
+  return { grid: next, hit };
+};
+
+/** Bomba de entulho (ataque): preenche as casas vazias da área 3x3 com lixo. */
+export const rubbleArea = (grid: Grid, r: number, c: number): { grid: Grid; added: [number, number][] } => {
+  const next = grid.map((row) => [...row]);
+  const added: [number, number][] = [];
+  area3(r, c).forEach(([rr, cc]) => {
+    if (next[rr][cc] === null) {
+      next[rr][cc] = GARBAGE;
+      added.push([rr, cc]);
+    }
+  });
+  return { grid: next, added };
+};
+
+/**
+ * Blocos de lixo (ataque): espalha `n` blocos em casas vazias, evitando completar linhas/colunas
+ * (o ataque não pode acabar ajudando quem recebe).
+ */
+export const dropGarbage = (grid: Grid, n: number, rnd: () => number = Math.random): { grid: Grid; added: [number, number][] } => {
+  const next = grid.map((row) => [...row]);
+  const added: [number, number][] = [];
+  const empty: [number, number][] = [];
+  next.forEach((row, r) => row.forEach((v, c) => v === null && empty.push([r, c])));
+  for (let i = empty.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [empty[i], empty[j]] = [empty[j], empty[i]];
+  }
+  for (const [r, c] of empty) {
+    if (added.length >= n) break;
+    const rowLeft = next[r].filter((v) => v === null).length;
+    const colLeft = next.filter((row) => row[c] === null).length;
+    if (rowLeft <= 1 || colLeft <= 1) continue;
+    next[r][c] = GARBAGE;
+    added.push([r, c]);
+  }
+  return { grid: next, added };
+};
+
+/** Lixo gerado automaticamente por jogadas fortes na batalha (estilo Tetris Attack). */
+export const garbageFor = (lines: number, combo: number): number => {
+  const base = lines >= 4 ? 6 : lines === 3 ? 4 : lines === 2 ? 2 : 0;
+  return base + (combo >= 3 ? 2 : 0);
+};

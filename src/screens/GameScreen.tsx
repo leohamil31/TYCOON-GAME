@@ -22,16 +22,20 @@ import { ShopModal } from '../components/ShopModal';
 import { ThemedBackdrop } from '../components/ThemedBackdrop';
 import { Toast, type ToastMsg } from '../components/Toast';
 import { BLOCK_COLORS, GAME } from '../constants';
-import { centerBlocks, fillOf, pieceDims, pieceFits, snapPlacement } from '../game/engine';
+import { fillOf, garbageFor, pieceDims, pieceFits, snapPlacement } from '../game/engine';
 import { initAds } from '../services/ads';
 import { buyRemoveAds, disposeIap, initIap, restorePurchases } from '../services/iap';
-import { BOOST_MOVES, coinsForScore, itemById, type PowerupId } from '../shop/catalog';
+import { ATTACK_IDS, BOOST_MOVES, coinsForScore, DEFAULT_FX, DEFAULT_SKIN, itemById, type AttackId, type PowerupId } from '../shop/catalog';
 import { themeFor } from '../shop/themes';
 import { useBlocks, type GameMode } from '../state/useBlocks';
 import { useProfile } from '../state/useProfile';
 import { addScore } from '../storage';
 import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER } from '../theme';
 import type { PlayerView, Snapshot } from '../types';
+import type { Attack } from '../services/battle';
+import { ATTACK_COOLDOWN_MS, type IncomingAttack } from '../state/useBattle';
+import { AimBoard, type AimMode } from '../components/AimBoard';
+import { SkinContext } from '../components/Piece';
 
 const N = GAME.GRID_SIZE;
 const PAD = 4; // borda + respiro entre a moldura e a grade
@@ -60,6 +64,11 @@ export interface BattleProps {
   /** Contagem regressiva ou partida encerrada: o tabuleiro não aceita jogadas. */
   locked: boolean;
   onLocalUpdate: (s: Snapshot) => void;
+  /** Ataques recebidos do adversário, ainda não aplicados. */
+  incoming: IncomingAttack[];
+  /** Envia um ataque (auto = gerado por combo, ignora a recarga). */
+  sendAttack: (a: Attack, auto?: boolean) => boolean;
+  ackAttacks: (ids: string[]) => void;
 }
 
 interface Props {
@@ -68,14 +77,27 @@ interface Props {
   battle?: BattleProps;
 }
 
-const TONES: Record<PowerupId, string> = {
+const TONES: Record<PowerupId | AttackId, string> = {
+  garbage: '#94a3b8',
+  freeze: '#7dd3fc',
+  rubble: '#a78bfa',
   boost_x2: NEON.gold,
   bomb: '#fb923c',
   reroll: NEON.cyan,
   undo: NEON.violet,
   shield: NEON.green,
 };
-const SHORT: Record<PowerupId, string> = { boost_x2: 'x2', bomb: 'Bomba', reroll: 'Nova mão', undo: 'Desfazer', shield: 'Escudo' };
+const SHORT: Record<PowerupId | AttackId, string> = {
+  boost_x2: 'x2',
+  bomb: 'Bomba',
+  reroll: 'Nova mão',
+  undo: 'Desfazer',
+  shield: 'Escudo',
+  garbage: 'Lixo',
+  freeze: 'Gelo',
+  rubble: 'Entulho',
+};
+const FREEZE_MS = 4000;
 
 /** Laço 0→1→0 enquanto `on` for verdadeiro (pulsos de alerta/brilho). */
 function usePulse(on: boolean, duration: number) {
@@ -102,7 +124,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const [area, setArea] = useState<{ w: number; h: number } | null>(null);
   const W = area?.w ?? win.width;
   const H = area?.h ?? win.height;
-  const locked = !!battle?.locked;
+  const matchLocked = !!battle?.locked;
+  // Congelado pelo rival: a bandeja (e os itens) ficam travados por alguns segundos.
+  const [frozen, setFrozen] = useState(false);
+  const locked = matchLocked || frozen;
 
   const {
     state,
@@ -115,7 +140,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     restart,
     revive,
     shield,
-    bomb,
+    bombAt,
+    receiveAttack,
     reroll,
     undoMove,
     activateBoost,
@@ -126,6 +152,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const have = (id: string) => profile?.inventory[id] ?? 0;
 
   const [shopOpen, setShopOpen] = useState(false);
+  const [aim, setAim] = useState<AimMode | null>(null);
+  const lastSent = useRef(0);
   const [toast, setToast] = useState<ToastMsg | null>(null);
   const toastId = useRef(0);
   const say = useCallback((text: string, kind: ToastMsg['kind'] = 'info', icon?: string) => {
@@ -145,7 +173,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     sideW = Math.min(440, W - boardSize - boardBox - 72);
   } else {
     const scoreboardH = battle ? 146 : 0;
-    const powerH = 92; // botões + espaçamento
+    const powerH = battle ? 160 : 92; // botões (+ fileira de ataques na batalha) + espaçamento
     const hintH = 32;
     const avail = H - hudH - scoreboardH - powerH - footerH - hintH - boardBox - 12;
     // A bandeja ocupa ~32% do lado do tabuleiro (peças com 5 casas a ~64% do tamanho da casa).
@@ -217,7 +245,9 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     const s = state;
     const item = itemById(id);
     if (!s || !item || busy.current) return;
-    if (locked) return say('Espere a partida começar!', 'info', '⏳');
+    if (matchLocked) return say('Espere a partida começar!', 'info', '⏳');
+    if (frozen) return say('Você está congelado!', 'info', '❄️');
+    if (item.battle && !battle) return say('Ataques só funcionam na batalha online.', 'info', item.icon);
     if (have(id) <= 0) {
       setShopOpen(true);
       return;
@@ -226,14 +256,24 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     const why =
       id === 'boost_x2' && boost > 0
         ? 'O x2 já está ativo.'
-        : id === 'bomb' && centerBlocks(s.grid).length === 0
-          ? 'O centro do tabuleiro já está vazio.'
-          : id === 'undo' && !canUndo
+        : id === 'bomb' && s.grid.every((row) => row.every((v) => v === null))
+          ? 'Seu tabuleiro está vazio.'
+          : (id === 'garbage' || id === 'freeze' || id === 'rubble') && Date.now() - lastSent.current < ATTACK_COOLDOWN_MS
+            ? 'Recarregando o ataque…'
+            : id === 'rubble' && !battle?.opp?.grid
+              ? 'Ainda não vimos o tabuleiro do rival.'
+              : id === 'undo' && !canUndo
             ? 'Nada para desfazer agora.'
             : id === 'shield' && s.status !== 'over'
               ? 'O escudo é usado quando você fica sem jogadas.'
               : null;
     if (why) return say(why, 'info', item.icon);
+    // Bombas abrem a mira primeiro; o item só é gasto ao confirmar.
+    if (id === 'bomb' || id === 'rubble') {
+      setSelectedPiece(null);
+      setAim(id === 'bomb' ? 'blast' : 'rubble');
+      return;
+    }
 
     busy.current = true;
     const err = await consume(id);
@@ -243,8 +283,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     if (id === 'boost_x2') {
       activateBoost();
       say(`Pontos em dobro nas próximas ${BOOST_MOVES} jogadas!`, 'ok', '⚡');
-    } else if (id === 'bomb') {
-      bomb();
+    } else if (id === 'garbage' || id === 'freeze') {
+      lastSent.current = Date.now();
+      battle?.sendAttack(id === 'garbage' ? { kind: 'garbage', n: 4 } : { kind: 'freeze' });
+      say(id === 'garbage' ? '4 blocos de lixo enviados!' : 'Bandeja do rival congelada!', 'ok', item.icon);
     } else if (id === 'reroll') {
       reroll();
       say('Peças novas na bandeja!', 'ok', '🔄');
@@ -254,6 +296,25 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     } else if (id === 'shield') {
       shield();
       say('Escudo ativado! Espaço liberado.', 'ok', '🛡️');
+    }
+  };
+
+  /** Confirmação da mira: gasta o item e explode / lança o entulho. */
+  const fireAim = async (r: number, c: number) => {
+    const mode = aim;
+    setAim(null);
+    if (!mode || busy.current) return;
+    const id = mode === 'blast' ? 'bomb' : 'rubble';
+    busy.current = true;
+    const err = await consume(id);
+    busy.current = false;
+    if (err) return say(err, 'error', '⚠️');
+    if (mode === 'blast') {
+      bombAt(r, c);
+    } else {
+      lastSent.current = Date.now();
+      battle?.sendAttack({ kind: 'rubble', r, c });
+      say('Bomba de entulho lançada!', 'ok', '☄️');
     }
   };
 
@@ -268,9 +329,16 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     activeText: id === 'boost_x2' && boost > 0 ? `${boost}` : undefined,
     disabled: locked || (id === 'undo' && !canUndo),
   }));
+  const attackChips: PowerChip[] = ATTACK_IDS.map((id) => ({
+    id,
+    icon: itemById(id)?.icon ?? '?',
+    label: SHORT[id],
+    count: have(id),
+    tone: TONES[id],
+    disabled: locked,
+  }));
   const rescues: RescueOption[] = (['shield', 'reroll', 'bomb', 'undo'] as PowerupId[])
     .filter((id) => id !== 'undo' || canUndo)
-    .filter((id) => id !== 'bomb' || (state ? centerBlocks(state.grid).length > 0 : false))
     .map((id) => ({ id, icon: itemById(id)?.icon ?? '?', label: SHORT[id], count: have(id) }));
 
   // ------------------------------------------------------------- arrastar e soltar
@@ -371,6 +439,52 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       ),
     ).start();
   }, [fx, shake]);
+
+  // ------------------------------------------------------------- batalha: ataques recebidos e enviados
+  const hit = useRef(new Animated.Value(0)).current;
+  const flashHit = useCallback(() => {
+    hit.setValue(1);
+    Animated.timing(hit, { toValue: 0, duration: 700, easing: Easing.out(Easing.quad), useNativeDriver: USE_NATIVE_DRIVER }).start();
+  }, [hit]);
+
+  // Aplica um ataque por vez (cada um parte do tabuleiro já atualizado pelo anterior).
+  const incoming = battle?.incoming;
+  const ack = battle?.ackAttacks;
+  useEffect(() => {
+    const a = incoming?.[0];
+    if (!a || !ack || !state || matchLocked) return;
+    ack([a.id]);
+    flashHit();
+    if (a.kind === 'freeze') {
+      setFrozen(true);
+      setSelectedPiece(null);
+      setDrag(null);
+      say(`${a.from} congelou sua bandeja!`, 'error', '❄️');
+    } else {
+      const n = receiveAttack(a);
+      say(
+        a.kind === 'garbage' ? `${a.from} jogou ${n} blocos de lixo em você!` : `${a.from} lançou uma bomba de entulho!`,
+        'error',
+        a.kind === 'garbage' ? '🧱' : '☄️',
+      );
+    }
+  }, [incoming, ack, state, matchLocked, receiveAttack, flashHit, say]);
+
+  useEffect(() => {
+    if (!frozen) return;
+    const t = setTimeout(() => setFrozen(false), FREEZE_MS);
+    return () => clearTimeout(t);
+  }, [frozen]);
+
+  // Jogadas fortes viram lixo automático no rival (estilo Tetris Attack).
+  const sendAttack = battle?.sendAttack;
+  const lastAutoFx = useRef(0);
+  useEffect(() => {
+    if (!fx || fx.kind !== 'clear' || !sendAttack || matchLocked || lastAutoFx.current === fx.id) return;
+    lastAutoFx.current = fx.id;
+    const n = Math.min(8, garbageFor(fx.lines, fx.combo));
+    if (n > 0 && sendAttack({ kind: 'garbage', n }, true)) say(`Combo! ${n} blocos de lixo no rival`, 'ok', '⚔️');
+  }, [fx, sendAttack, matchLocked, say]);
 
   const fill = state ? fillOf(state.grid) : 0;
   const danger = !!state && state.status === 'playing' && fill >= 0.68;
@@ -473,7 +587,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             </View>
           ))}
           <FloatScore placed={fx && placed && fx.id === placed.id ? null : placed} cell={cell} />
-          <ClearEffects fx={fx} cell={cell} boardSize={boardSize} />
+          <ClearEffects fx={fx} cell={cell} boardSize={boardSize} fxStyle={profile?.effect ?? DEFAULT_FX} />
         </View>
 
         {danger && (
@@ -482,6 +596,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             style={[styles.danger, { opacity: dangerPulse.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.7] }) }]}
           />
         )}
+        <Animated.View pointerEvents="none" style={[styles.hitFlash, { opacity: hit }]} />
         {boost > 0 && (
           <Animated.View
             pointerEvents="none"
@@ -501,6 +616,11 @@ export function GameScreen({ mode, onExit, battle }: Props) {
 
   const tray = (
     <View style={[styles.tray, { width: landscape ? sideW : boardSize + boardBox, height: trayH }]}>
+      {frozen && (
+        <View pointerEvents="none" style={styles.ice}>
+          <Text style={styles.iceText}>❄️ CONGELADO</Text>
+        </View>
+      )}
       {state.pieces.map((piece, i) => {
         const fits = piece ? pieceFits(state.grid, piece) : false;
         return (
@@ -527,27 +647,33 @@ export function GameScreen({ mode, onExit, battle }: Props) {
 
   const hint = (
     <Text style={styles.hint} numberOfLines={1}>
-      {locked
+      {matchLocked
         ? '⏳ Prepare-se…'
+        : frozen
+          ? '❄️ Congelado! Espere derreter…'
         : anySelected
           ? '👆 Toque numa casa livre para encaixar'
           : 'Arraste uma peça • ou toque nela e depois no tabuleiro'}
     </Text>
   );
 
+  const barW = landscape ? sideW : Math.min(W - 24, boardSize + boardBox + 40);
   const power = (
-    <PowerBar
-      chips={chips}
-      onUse={applyItem}
-      onShop={() => setShopOpen(true)}
-      width={landscape ? sideW : Math.min(W - 24, boardSize + boardBox + 40)}
-      compact={H < 640}
-    />
+    <View style={{ alignItems: 'center', gap: 10 }}>
+      <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={H < 640 || !!battle} slots={5} />
+      {battle && (
+        <View style={styles.attackRow}>
+          <Text style={styles.attackLabel}>⚔️ ATAQUES</Text>
+          <PowerBar chips={attackChips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact showShop={false} slots={5} />
+        </View>
+      )}
+    </View>
   );
 
   const battleOver = battle && state.status === 'over' && !locked;
 
   return (
+    <SkinContext.Provider value={profile?.skin ?? DEFAULT_SKIN}>
     <View ref={rootRef} style={styles.root} collapsable={false} onLayout={onRootLayout}>
       <ThemedBackdrop themeId={theme.id} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, gradient(180, ['rgba(2,6,23,0.35)', 'rgba(2,6,23,0)', 'rgba(2,6,23,0.55)'], 'rgba(2,6,23,0.15)')]} />
@@ -647,10 +773,18 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       )}
 
       <Toast msg={toast} />
+      <AimBoard
+        visible={aim !== null}
+        mode={aim ?? 'blast'}
+        grid={aim === 'rubble' ? (battle?.opp?.grid ?? null) : state.grid}
+        title={aim === 'rubble' ? `☄️ Mire em ${battle?.opp?.name ?? 'rival'}` : '💣 Onde explodir?'}
+        onCancel={() => setAim(null)}
+        onConfirm={fireAim}
+      />
 
       {mode === 'solo' && (
         <GameOverModal
-          visible={state.status === 'over' && !shopOpen}
+          visible={state.status === 'over' && !shopOpen && !aim}
           score={state.score}
           prevBest={startBest}
           coins={coinsForScore(state.score)}
@@ -665,6 +799,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       )}
       <ShopModal visible={shopOpen} onClose={() => setShopOpen(false)} initialTab="powerups" />
     </View>
+    </SkinContext.Provider>
   );
 }
 
@@ -781,6 +916,20 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   link: { color: 'rgba(148,163,184,0.85)', fontSize: 12, textDecorationLine: 'underline' },
+  attackRow: { alignItems: 'center', gap: 4 },
+  attackLabel: { color: '#fda4af', fontSize: 9.5, fontWeight: '900', letterSpacing: 2 },
+  ice: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 5,
+    borderRadius: 18,
+    backgroundColor: 'rgba(125,211,252,0.28)',
+    borderWidth: 2,
+    borderColor: 'rgba(186,230,253,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iceText: { color: '#f0f9ff', fontWeight: '900', fontSize: 16, letterSpacing: 2, textShadowColor: '#0ea5e9', textShadowRadius: 10 },
+  hitFlash: { ...StyleSheet.absoluteFill, borderRadius: 20, borderWidth: 4, borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.12)' },
   waitBanner: {
     position: 'absolute',
     left: 16,

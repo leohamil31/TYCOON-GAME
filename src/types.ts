@@ -22,8 +22,8 @@ export interface SaveData {
 
 export interface ClearFx {
   id: number;
-  /** 'clear' = linhas completadas; 'bomb' = explosão do power-up. */
-  kind: 'clear' | 'bomb';
+  /** 'clear' = linhas completadas; 'bomb' = explosão do power-up; 'rubble' = entulho recebido do rival. */
+  kind: 'clear' | 'bomb' | 'rubble';
   lines: number;
   combo: number;
   points: number;
@@ -33,6 +33,8 @@ export interface ClearFx {
   cleared: { r: number; c: number; color: number }[];
   rows: number[];
   cols: number[];
+  /** Centro da explosão (bomba mirada / entulho). */
+  center?: { r: number; c: number };
 }
 
 /** Última peça colocada (anima o "encaixe" das casas). */

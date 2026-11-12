@@ -29,6 +29,7 @@ for (const [n, c] of [['A', A], ['B', B]]) {
 const pa = await must('init_profile A', A.rpc('init_profile', { p_name: 'Teste A' }));
 const pb = await must('init_profile B', B.rpc('init_profile', { p_name: 'Teste B' }));
 if (pa.coins !== 100 || pa.inventory.bomb !== 1) throw new Error('kit inicial errado: ' + JSON.stringify(pa));
+if (pa.skin !== 'skin_classic' || pa.wins !== 0) throw new Error('colunas novas ausentes — rode o schema.sql de novo: ' + JSON.stringify(pa));
 const fr = await must('add_friend', A.rpc('add_friend', { p_code: pb.userId }));
 if (fr.length !== 1 || fr[0].id !== pb.userId) throw new Error('amizade não apareceu');
 const fb = await must('list_friends B', B.rpc('list_friends'));
@@ -44,6 +45,30 @@ if (run.coins !== 20) throw new Error('moedas da partida erradas: ' + run.coins)
 const direct = await A.from('profiles').update({ coins: 999999 }).eq('code', pa.userId).select();
 if ((direct.data ?? []).length > 0) throw new Error('RLS falhou: perfil alterado direto!');
 ok('RLS bloqueia edição direta');
+
+// Loja expandida: pacote, skin e efeito
+await must('simulated_iap coins_1500', B.rpc('simulated_iap', { p_sku: 'coins_1500' }));
+const war = await must('purchase pack_war', B.rpc('purchase', { p_item: 'pack_war' }));
+if (war.inventory.garbage !== 5 || war.inventory.freeze !== 3 || war.inventory.rubble !== 3) throw new Error('pacote errado: ' + JSON.stringify(war.inventory));
+const lock = await B.rpc('equip_board', { p_board: 'skin_neon' });
+if (!lock.error?.message.startsWith('not_owned|')) throw new Error('skin bloqueada deveria falhar');
+ok('skin bloqueada não equipa');
+await must('purchase skin_pixel', B.rpc('purchase', { p_item: 'skin_pixel' }));
+const eq = await must('equip skin_pixel', B.rpc('equip_board', { p_board: 'skin_pixel' }));
+if (eq.skin !== 'skin_pixel') throw new Error('skin não equipou');
+const fxp = await must('equip fx_classic (grátis)', B.rpc('equip_board', { p_board: 'fx_classic' }));
+if (fxp.effect !== 'fx_classic') throw new Error('efeito não equipou');
+
+// Batalha + ranking
+const mid = 'battle-smoke-' + Date.now();
+const bt = await must('report_battle (vitória)', B.rpc('report_battle', { p_match_id: mid, p_score: 600, p_won: true }));
+const bt2 = await must('report_battle repetido', B.rpc('report_battle', { p_match_id: mid, p_score: 600, p_won: true }));
+if (bt.wins !== 1 || bt2.wins !== 1 || bt2.battles !== 1) throw new Error('vitória contada errado: ' + JSON.stringify(bt2));
+const glob = await must('leaderboard_global', B.rpc('leaderboard_global'));
+if (!glob.some((r) => r.me && r.best === 600)) throw new Error('você não aparece no ranking global');
+await must('add_friend de novo', A.rpc('add_friend', { p_code: pb.userId }));
+const lf = await must('leaderboard_friends', A.rpc('leaderboard_friends'));
+if (lf.length !== 2 || lf[0].name !== 'Teste B') throw new Error('ranking de amigos errado: ' + JSON.stringify(lf));
 
 // Sala em tempo real
 const room = 'SMK' + Math.random().toString(36).slice(2, 4).toUpperCase();

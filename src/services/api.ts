@@ -6,6 +6,8 @@ import {
   itemById,
   MAX_RUN_SCORE,
   packById,
+  isCosmetic,
+  type ShopItem,
 } from '../shop/catalog';
 import {
   cleanPlayerName,
@@ -16,6 +18,7 @@ import {
   type ApiErrorCode,
   type Friend,
   type Profile,
+  type RankEntry,
 } from '../shop/types';
 import { ensureSession, supabase } from './supabase';
 
@@ -41,6 +44,10 @@ export interface Backend {
   consume(itemId: string): Promise<Profile>;
   heartbeat(score: number): Promise<void>;
   openBattleSocket(): Promise<WebSocket>;
+  /** Ranking global ou de amigos (só com servidor). */
+  leaderboard?(scope: 'global' | 'friends'): Promise<RankEntry[]>;
+  /** Registra o resultado de uma batalha (vitórias no ranking). */
+  reportBattle?(matchId: string, score: number, won: boolean): Promise<Profile>;
   listFriends(): Promise<Friend[]>;
   addFriend(code: string): Promise<Friend[]>;
   removeFriend(code: string): Promise<Friend[]>;
@@ -154,11 +161,13 @@ function localBackend(): Backend {
     if (!st) throw new ApiError('unauthorized', 'Perfil não carregado.');
     return st;
   };
-  const grant = (item: { id: string; kind: string }, qty: number) => {
+  const grant = (item: ShopItem, qty: number) => {
     const p = need().profile;
-    if (item.kind === 'board') {
-      if (p.boards.includes(item.id)) throw new ApiError('already_owned', 'Você já possui este tabuleiro.');
+    if (isCosmetic(item.kind)) {
+      if (p.boards.includes(item.id)) throw new ApiError('already_owned', 'Você já possui este item.');
       p.boards.push(item.id);
+    } else if (item.kind === 'bundle') {
+      Object.entries(item.grants ?? {}).forEach(([id, n]) => (p.inventory[id] = (p.inventory[id] ?? 0) + n * qty));
     } else p.inventory[item.id] = (p.inventory[item.id] ?? 0) + qty;
   };
 
@@ -209,7 +218,7 @@ function localBackend(): Backend {
       const item = itemById(itemId);
       if (!item || item.price <= 0) throw new ApiError('not_found', 'Item não está à venda.');
       const n = item.kind === 'consumable' ? Math.min(10, Math.max(1, Math.floor(qty))) : 1;
-      if (item.kind === 'board' && p.boards.includes(item.id)) throw new ApiError('already_owned', 'Você já possui este tabuleiro.');
+      if (isCosmetic(item.kind) && p.boards.includes(item.id)) throw new ApiError('already_owned', 'Você já possui este item.');
       if (p.coins < item.price * n) throw new ApiError('insufficient_funds', 'Moedas insuficientes.');
       p.coins -= item.price * n;
       grant(item, n);
@@ -224,10 +233,14 @@ function localBackend(): Backend {
       else throw new ApiError('not_found', 'Produto não encontrado.');
       return save();
     },
-    async equipBoard(boardId) {
+    async equipBoard(id) {
       const p = need().profile;
-      if (!p.boards.includes(boardId)) throw new ApiError('not_owned', 'Tabuleiro bloqueado. Compre na loja para usar.');
-      p.equipped = boardId;
+      const item = itemById(id);
+      if (!item || !isCosmetic(item.kind)) throw new ApiError('not_found', 'Item inválido.');
+      if (item.price > 0 && !p.boards.includes(id)) throw new ApiError('not_owned', 'Bloqueado. Compre na loja para usar.');
+      if (item.kind === 'skin') p.skin = id;
+      else if (item.kind === 'fx') p.effect = id;
+      else p.equipped = id;
       return save();
     },
     async consume(itemId) {
@@ -313,6 +326,8 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       // Com o Supabase as salas usam o Realtime dele (services/battle.ts), não um WebSocket próprio.
       throw new ApiError('invalid', 'Salas usam o Supabase Realtime.');
     },
+    leaderboard: (scope) => rpc(scope === 'global' ? 'leaderboard_global' : 'leaderboard_friends'),
+    reportBattle: (matchId, score, won) => rpc('report_battle', { p_match_id: matchId, p_score: Math.floor(score), p_won: won }),
     listFriends: () => rpc('list_friends'),
     addFriend: (code) => rpc('add_friend', { p_code: normalizeUserCode(code) }),
     removeFriend: (code) => rpc('remove_friend', { p_code: normalizeUserCode(code) }),

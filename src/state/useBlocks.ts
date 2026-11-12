@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   anyMoves,
+  blastArea,
   canPlace,
   centerBlocks,
+  dropGarbage,
+  rubbleArea,
   clearCenter,
   dealPieces,
   emptyGrid,
@@ -11,6 +14,7 @@ import {
 } from '../game/engine';
 import { loadGame, saveGame } from '../storage';
 import { BOOST_MOVES } from '../shop/catalog';
+import type { Attack } from '../services/battle';
 import type { ClearFx, GameState, PlacedFx, SaveData } from '../types';
 
 const newGame = (best: number, adsRemoved: boolean): SaveData => {
@@ -164,15 +168,14 @@ export function useBlocks(mode: GameMode = 'solo', locked = false) {
   /** Escudo: como o revive, mas sem gastar o revive por anúncio. */
   const shield = useCallback(() => rescue(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Bomba: explode o centro 4x4. Vale 2 pontos por bloco destruído. */
-  const bomb = useCallback((): boolean => {
+  /** Bomba mirada: explode a área 3x3 escolhida pelo jogador. Vale 2 pontos por bloco destruído. */
+  const bombAt = useCallback((r: number, c: number): boolean => {
     const s = ref.current;
-    // Também funciona sem jogadas: abrir o centro pode salvar a partida.
+    // Também funciona sem jogadas: abrir espaço pode salvar a partida.
     if (lockedRef.current || !s) return false;
-    const blocks = centerBlocks(s.grid);
-    if (blocks.length === 0) return false;
-    const grid = clearCenter(s.grid);
-    const points = blocks.length * 2;
+    const { grid, hit } = blastArea(s.grid, r, c);
+    if (hit.length === 0) return false;
+    const points = hit.length * 2;
     const score = s.score + points;
     undo.current = null;
     setCanUndo(false);
@@ -191,11 +194,45 @@ export function useBlocks(mode: GameMode = 'solo', locked = false) {
       points,
       perfect: false,
       boosted: false,
-      cleared: blocks,
+      cleared: hit,
       rows: [],
       cols: [],
+      center: { r, c },
     });
     return true;
+  }, []);
+
+  /**
+   * Aplica um ataque recebido do adversário (lixo ou entulho). O gelo é tratado na tela (trava a bandeja).
+   * Retorna quantos blocos de lixo entraram.
+   */
+  const receiveAttack = useCallback((a: Attack): number => {
+    const s = ref.current;
+    if (!s || a.kind === 'freeze') return 0;
+    const res = a.kind === 'garbage' ? dropGarbage(s.grid, a.n) : rubbleArea(s.grid, a.r, a.c);
+    if (res.added.length === 0) return 0;
+    // O "Desfazer" não pode apagar um ataque recebido.
+    undo.current = null;
+    setCanUndo(false);
+    setState({ ...s, grid: res.grid, status: anyMoves(res.grid, s.pieces) ? 'playing' : 'over' });
+    const id = ++fxId.current;
+    setPlaced({ id, cells: res.added, points: 0 });
+    if (a.kind === 'rubble') {
+      setFx({
+        id,
+        kind: 'rubble',
+        lines: 0,
+        combo: 0,
+        points: 0,
+        perfect: false,
+        boosted: false,
+        cleared: [],
+        rows: [],
+        cols: [],
+        center: { r: a.r, c: a.c },
+      });
+    }
+    return res.added.length;
   }, []);
 
   /** Nova Mão: troca as peças da bandeja por outras que cabem no tabuleiro. */
@@ -237,7 +274,8 @@ export function useBlocks(mode: GameMode = 'solo', locked = false) {
     restart,
     revive,
     shield,
-    bomb,
+    bombAt,
+    receiveAttack,
     reroll,
     undoMove,
     activateBoost,

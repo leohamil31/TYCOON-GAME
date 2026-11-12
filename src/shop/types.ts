@@ -7,9 +7,28 @@ export interface Profile {
   best: number;
   /** Quantidade de cada consumível. */
   inventory: Record<string, number>;
-  /** Ids dos tabuleiros desbloqueados. */
+  /** Ids dos cosméticos desbloqueados (tabuleiros, skins e efeitos; os grátis não precisam estar aqui). */
   boards: string[];
+  /** Tabuleiro equipado. */
   equipped: string;
+  /** Skin das peças equipada. */
+  skin?: string;
+  /** Efeito de limpeza equipado. */
+  effect?: string;
+  /** Batalhas vencidas / jogadas. */
+  wins?: number;
+  battles?: number;
+}
+
+/** Linha do ranking (global ou de amigos). */
+export interface RankEntry {
+  rank: number;
+  name: string;
+  best: number;
+  wins: number;
+  /** Código de amigo (só para amigos/você). */
+  code?: string;
+  me?: boolean;
 }
 
 export interface Friend {

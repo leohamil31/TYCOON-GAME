@@ -1,8 +1,8 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { createContext, memo, useContext, useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
-import { BLOCK_COLORS } from '../constants';
+import { BLOCK_COLORS, GARBAGE } from '../constants';
 import { pieceDims } from '../game/engine';
-import { USE_NATIVE_DRIVER } from '../theme';
+import { alpha, USE_NATIVE_DRIVER } from '../theme';
 import type { Piece } from '../types';
 
 const shade = (hex: string, f: number): string => {
@@ -11,17 +11,146 @@ const shade = (hex: string, f: number): string => {
   return `rgb(${ch(n >> 16)}, ${ch((n >> 8) & 255)}, ${ch(n & 255)})`;
 };
 
-/** Chunky 3D cube: dark side face underneath, lit top face with bevel and gloss. */
+/** Skins de peças vendidas na loja. */
+export type SkinId = 'skin_classic' | 'skin_neon' | 'skin_glass' | 'skin_pixel';
+
+/** Skin equipada; o jogo inteiro (tabuleiro, bandeja, mira) lê daqui. */
+export const SkinContext = createContext<string>('skin_classic');
+
+/** Bloco de entulho (lixo enviado pelo rival): chapa de aço rebitada, igual em todas as skins. */
+function GarbageBlock({ size, ghost }: { size: number; ghost?: boolean }) {
+  const inner = size - 3;
+  const r = Math.max(3, size * 0.16);
+  const dot = Math.max(2, size * 0.1);
+  const pad = inner * 0.16;
+  return (
+    <View
+      style={{
+        width: inner,
+        height: inner,
+        margin: 1.5,
+        borderRadius: r,
+        backgroundColor: '#4b5563',
+        borderWidth: 1.5,
+        borderTopColor: '#9ca3af',
+        borderLeftColor: '#6b7280',
+        borderRightColor: '#1f2937',
+        borderBottomColor: '#111827',
+        opacity: ghost ? 0.5 : 1,
+        overflow: 'hidden',
+      }}
+    >
+      {/* faixa diagonal de "aço escovado" */}
+      <View style={{ position: 'absolute', left: -inner * 0.2, top: inner * 0.38, width: inner * 1.4, height: inner * 0.14, backgroundColor: 'rgba(255,255,255,0.08)', transform: [{ rotate: '-35deg' }] }} />
+      {[
+        [pad, pad],
+        [inner - pad - dot - 3, pad],
+        [pad, inner - pad - dot - 3],
+        [inner - pad - dot - 3, inner - pad - dot - 3],
+      ].map(([x, y], i) => (
+        <View key={i} style={{ position: 'absolute', left: x, top: y, width: dot, height: dot, borderRadius: dot, backgroundColor: '#d1d5db', borderBottomWidth: 1, borderBottomColor: '#1f2937' }} />
+      ))}
+    </View>
+  );
+}
+
+/** Bloco com a skin equipada (ou `skin` para prévias da loja). */
 export const Block = memo(function Block({
   color,
   size,
   ghost,
+  skin,
 }: {
   color: number;
   size: number;
   ghost?: boolean;
+  skin?: string;
 }) {
+  const equipped = useContext(SkinContext);
+  if (color === GARBAGE) return <GarbageBlock size={size} ghost={ghost} />;
   const base = BLOCK_COLORS[color];
+  const kind = (skin ?? equipped) as SkinId;
+  const inner = size - 3;
+
+  if (kind === 'skin_neon') {
+    // Contorno luminoso sobre fundo escuro.
+    return (
+      <View
+        style={{
+          width: inner,
+          height: inner,
+          margin: 1.5,
+          borderRadius: size * 0.2,
+          backgroundColor: shade(base, 0.22),
+          borderWidth: Math.max(2, size * 0.08),
+          borderColor: base,
+          opacity: ghost ? 0.5 : 1,
+          shadowColor: base,
+          shadowOpacity: ghost ? 0 : 0.9,
+          shadowRadius: size * 0.25,
+          shadowOffset: { width: 0, height: 0 },
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <View style={{ width: inner * 0.3, height: inner * 0.3, borderRadius: inner, backgroundColor: base, opacity: 0.85 }} />
+      </View>
+    );
+  }
+
+  if (kind === 'skin_glass') {
+    // Vidro colorido translúcido com reflexo.
+    return (
+      <View
+        style={{
+          width: inner,
+          height: inner,
+          margin: 1.5,
+          borderRadius: size * 0.26,
+          backgroundColor: alpha(base, ghost ? 0.25 : 0.55),
+          borderWidth: 1.5,
+          borderColor: 'rgba(255,255,255,0.55)',
+          borderBottomColor: alpha(base, 0.9),
+          overflow: 'hidden',
+        }}
+      >
+        <View style={{ position: 'absolute', left: -inner * 0.2, top: -inner * 0.45, width: inner * 1.1, height: inner * 0.8, borderRadius: inner, backgroundColor: 'rgba(255,255,255,0.28)', transform: [{ rotate: '-18deg' }] }} />
+        <View style={{ position: 'absolute', right: inner * 0.14, bottom: inner * 0.14, width: inner * 0.16, height: inner * 0.16, borderRadius: inner, backgroundColor: 'rgba(255,255,255,0.6)' }} />
+      </View>
+    );
+  }
+
+  if (kind === 'skin_pixel') {
+    // Retrô 8-bit: quadrado com bordas claras/escuras chapadas.
+    const b = Math.max(2, Math.round(size * 0.12));
+    return (
+      <View
+        style={{
+          width: inner,
+          height: inner,
+          margin: 1.5,
+          backgroundColor: base,
+          borderTopWidth: b,
+          borderLeftWidth: b,
+          borderRightWidth: b,
+          borderBottomWidth: b,
+          borderTopColor: shade(base, 1.35),
+          borderLeftColor: shade(base, 1.2),
+          borderRightColor: shade(base, 0.7),
+          borderBottomColor: shade(base, 0.55),
+          opacity: ghost ? 0.5 : 1,
+        }}
+      >
+        <View style={{ position: 'absolute', left: b * 0.5, top: b * 0.5, width: b, height: b, backgroundColor: 'rgba(255,255,255,0.7)' }} />
+      </View>
+    );
+  }
+
+  return <CubeBlock base={base} size={size} ghost={ghost} />;
+});
+
+/** Skin clássica: cubo 3D com face lateral escura, topo iluminado, chanfro e brilho. */
+function CubeBlock({ base, size, ghost }: { base: string; size: number; ghost?: boolean }) {
   const inner = size - 3;
   const radius = Math.max(4, size * 0.24);
   const depth = Math.max(3, size * 0.16);
@@ -42,7 +171,7 @@ export const Block = memo(function Block({
         shadowOpacity: ghost ? 0 : 0.45,
         shadowRadius: 5,
         shadowOffset: { width: 0, height: depth * 0.8 },
-        elevation: ghost ? 0 : 4,
+        elevation: ghost ? 0 : 3,
       }}
     >
       <View
@@ -92,7 +221,7 @@ export const Block = memo(function Block({
       </View>
     </View>
   );
-});
+}
 
 /** Casa recém-encaixada: entra com "pop" elástico e um brilho branco que se apaga. */
 export function PopIn({ size, delay = 0, children }: { size: number; delay?: number; children: React.ReactNode }) {
@@ -188,7 +317,7 @@ export function TrayPiece({
   );
 }
 
-export function PieceView({ piece, size }: { piece: Piece; size: number }) {
+export function PieceView({ piece, size, skin }: { piece: Piece; size: number; skin?: string }) {
   const { rows, cols } = pieceDims(piece);
   const filled = new Set(piece.cells.map(([r, c]) => `${r},${c}`));
   return (
@@ -197,7 +326,7 @@ export function PieceView({ piece, size }: { piece: Piece; size: number }) {
         <View key={r} style={styles.row}>
           {Array.from({ length: cols }, (_, c) =>
             filled.has(`${r},${c}`) ? (
-              <Block key={c} color={piece.color} size={size} />
+              <Block key={c} color={piece.color} size={size} skin={skin} />
             ) : (
               <View key={c} style={{ width: size, height: size }} />
             ),
