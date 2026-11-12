@@ -1,16 +1,15 @@
-import { Platform } from 'react-native';
 import type { DataConnection, Peer as PeerInstance } from 'peerjs';
 import { BLOCK_COLORS, GAME } from '../constants';
 import { cleanName } from '../storage';
 import type { Grid } from '../types';
+import { loadPeer, type PeerCtor } from './loadPeer';
 
 /**
  * Real-time transport for friend battles.
  *
- * Uses PeerJS (WebRTC data channels): the room code is the host's peer id, so no backend or API key is
- * needed. Only the free public PeerJS signalling server is used to introduce the two browsers; game
- * traffic then flows peer-to-peer. To move to Supabase/Firebase/WebSocket, keep `Connection`/`Handlers`
- * and replace `createRoom` / `joinRoom`.
+ * Uses PeerJS (WebRTC data channels) in browsers and its React Native WebRTC adapter in the apps.
+ * The room code is the host's peer id; the public PeerJS signalling server introduces the players,
+ * then game traffic flows peer-to-peer.
  */
 
 export type BattleMsg =
@@ -40,7 +39,6 @@ const N = GAME.GRID_SIZE;
 
 const ERR_SERVER = 'Sem conexão com o servidor de salas. Verifique a internet.';
 const ERR_NOT_FOUND = 'Sala não encontrada. Confira o código.';
-const ERR_WEB_ONLY = 'A batalha online está disponível por enquanto apenas na versão web.';
 
 class IdTaken extends Error {}
 
@@ -84,13 +82,6 @@ export const parseMsg = (raw: unknown): BattleMsg | null => {
     default:
       return null;
   }
-};
-
-type PeerCtor = typeof import('peerjs').Peer;
-
-const loadPeer = async (): Promise<PeerCtor> => {
-  if (Platform.OS !== 'web') throw new Error(ERR_WEB_ONLY);
-  return (await import('peerjs')).Peer;
 };
 
 const describe = (type: string): string => {
