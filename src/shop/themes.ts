@@ -15,12 +15,13 @@ export interface BoardTheme {
 export const THEMES: Record<string, BoardTheme> = {
   classic: {
     id: 'classic',
-    board: '#142036',
+    board: '#0d1628',
     cell: COLORS.cell,
     cellAlt: '#1b2940',
-    frameTop: 'rgba(148,197,255,0.45)',
-    frameSide: 'rgba(148,197,255,0.3)',
-    glow: '#000',
+    // Sempre #hex: alpha() só entende hex.
+    frameTop: '#7dd3fc',
+    frameSide: '#3b82f6',
+    glow: '#38bdf8',
   },
   neon: {
     id: 'neon',

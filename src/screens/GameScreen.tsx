@@ -40,7 +40,7 @@ import { AimBoard, type AimMode } from '../components/AimBoard';
 import { SkinContext } from '../components/Piece';
 
 const N = GAME.GRID_SIZE;
-const PAD = 4; // borda + respiro entre a moldura e a grade
+const PAD = 4; // respiro entre a moldura e a grade (o "poço" escuro onde ficam as casas)
 
 interface Drag {
   index: number;
@@ -167,30 +167,43 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   }, []);
 
   // ------------------------------------------------------------- layout responsivo
-  const showFooter = mode === 'solo' && !!state && !state.adsRemoved;
+  // Links de compra só quando sobra altura (em telas baixas cada pixel vai para a arena).
+  const showFooter = mode === 'solo' && !!state && !state.adsRemoved && H >= 860;
   const landscape = W >= 760 && W > H * 1.2;
+  const shortScreen = H < 760;
   // Batalha usa uma faixa compacta (BattleHud) no lugar do HUD + placar: sobra espaço para a arena.
-  const hudH = battle ? 76 : 84; // ScoreHud: 64 + margens
-  const boardBox = PAD * 2 + 10; // moldura + borda inferior 3D
+  const hudH = battle ? 76 : shortScreen ? 66 : 84; // ScoreHud (compacto em telas baixas)
+  const boardBox = PAD * 2 + 10; // poço + bordas (2 + 2 dos lados; 2 + 6 em cima/embaixo)
   let boardSize: number;
+  /** Altura que sobra em retrato quando o tabuleiro é limitado pela largura (vai para a bandeja). */
+  let extraH = 0;
   let sideW: number;
   const footerH = showFooter ? 36 : 0;
   if (landscape) {
-    boardSize = Math.min(H - hudH - footerH - boardBox - 28, W * 0.5, 620);
-    sideW = Math.min(440, W - boardSize - boardBox - 72);
+    boardSize = Math.min(H - hudH - footerH - boardBox - 16, W * 0.54, 720);
+    sideW = Math.min(460, W - boardSize - boardBox - 56);
   } else {
-    const powerH = battle ? 72 : 92; // uma fileira de botões + espaçamento
-    const hintH = battle ? 22 : 32;
-    const avail = H - hudH - powerH - footerH - hintH - boardBox - 12;
+    const powerH = battle ? 72 : shortScreen ? 80 : 92; // uma fileira de botões + espaçamento
+    const hintH = H < 700 ? 8 : battle ? 22 : 30;
+    const avail = H - hudH - powerH - footerH - hintH - boardBox - 10;
     // A bandeja ocupa ~32% do lado do tabuleiro (peças com 5 casas a ~64% do tamanho da casa).
-    boardSize = Math.min(W - 14 - boardBox, 560, (avail - 20) / 1.32);
+    // Bandeja ≈ 3 casas de peça a ~78% do tamanho da casa do tabuleiro (≈ 0,234 do lado + margens).
+    boardSize = Math.min(W - 10 - boardBox, 720, (avail - 24) / 1.234);
+    extraH = Math.max(0, avail - 24 - boardSize * 1.234);
     sideW = boardSize + boardBox;
   }
   boardSize = Math.floor(Math.max(200, boardSize));
   const cell = boardSize / N;
   const slotW = (landscape ? sideW : boardSize + boardBox) / GAME.PIECES_PER_DEAL;
-  const trayCell = Math.min(cell * (landscape ? 0.72 : 0.64), (slotW - 8) / 5.2);
-  const trayH = trayCell * 5 + 16;
+  // Cada peça da bandeja é dimensionada pelo próprio tamanho: as pequenas/médias aparecem grandes,
+  // só as compridas (4-5 casas) encolhem para caber.
+  const trayCellMax = landscape ? cell * 0.8 : Math.min(cell * 0.95, cell * 0.78 + extraH / 3.2);
+  const trayH = Math.max(trayCellMax * 3 + 20, 84);
+  const trayCellFor = (p: { cells: [number, number][] }) => {
+    const rows = Math.max(...p.cells.map((x) => x[0])) + 1;
+    const cols = Math.max(...p.cells.map((x) => x[1])) + 1;
+    return Math.min(trayCellMax, (slotW - 14) / cols, (trayH - 20) / rows);
+  };
   const lift = Math.max(56, cell * 1.6); // mantém a peça arrastada visível acima do dedo
 
   const onRootLayout = (e: LayoutChangeEvent) => {
@@ -569,9 +582,9 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       <View
         style={[
           styles.board,
-          gradient(160, [alpha(theme.frameSide, 0.35), theme.board, theme.board], theme.board),
+          { backgroundColor: theme.board },
           {
-            padding: PAD - 2,
+            padding: PAD,
             borderTopColor: frameTone,
             borderLeftColor: alpha(frameTone, 0.6),
             borderRightColor: alpha(frameTone, 0.35),
@@ -600,8 +613,9 @@ export function GameScreen({ mode, onExit, battle }: Props) {
                       style={[
                         styles.slotCell,
                         {
-                          borderRadius: cell * 0.2,
-                          backgroundColor: (r + c) % 2 === 0 ? theme.cellAlt : theme.cell,
+                          borderRadius: cell * 0.22,
+                          backgroundColor: alpha(theme.frameTop, 0.085),
+                          borderColor: alpha(theme.frameTop, 0.16),
                         },
                       ]}
                     />
@@ -680,7 +694,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             {piece && (
               <TrayPiece
                 piece={piece}
-                size={trayCell}
+                size={trayCellFor(piece)}
                 index={i}
                 selected={selectedPiece === i}
                 hidden={drag?.index === i}
@@ -693,7 +707,9 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     </View>
   );
 
-  const hint = (
+  const hint = H < 700 ? (
+    <View style={{ height: 8 }} />
+  ) : (
     <Text style={styles.hint} numberOfLines={1}>
       {matchLocked
         ? '⏳ Prepare-se…'
@@ -720,7 +736,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       divideAfter={chips.length}
     />
   ) : (
-    <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={H < 640} slots={5} />
+    <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={shortScreen} slots={5} />
   );
 
   const battleOver = battle && state.status === 'over' && !locked;
@@ -743,7 +759,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         />
       ) : (
         <View style={styles.hudWrap}>
-          <ScoreHud score={state.score} best={state.best} combo={combo} coins={profile?.coins} onBack={exit} title="TYCOON GAME" />
+          <ScoreHud score={state.score} best={state.best} combo={combo} coins={profile?.coins} onBack={exit} title="TYCOON GAME" compact={shortScreen} />
         </View>
       )}
 
@@ -862,26 +878,24 @@ const styles = StyleSheet.create({
   side: { alignItems: 'center', justifyContent: 'center' },
   portrait: { flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', paddingBottom: 6 },
   board: {
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 2,
     borderBottomColor: '#050912',
-    borderBottomWidth: 10,
+    borderBottomWidth: 6,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 14 },
     elevation: 14,
   },
   row: { flexDirection: 'row' },
+  // Casa vazia: quadrado limpo e bem visível (cor do tema bem suave + contorno fino).
   slotCell: {
     position: 'absolute',
-    left: 1.5,
-    top: 1.5,
-    right: 1.5,
-    bottom: 1.5,
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(0,0,0,0.35)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
+    left: 2,
+    top: 2,
+    right: 2,
+    bottom: 2,
+    borderWidth: 1,
   },
   lineHit: {
     position: 'absolute',

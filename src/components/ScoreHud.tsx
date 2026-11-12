@@ -14,10 +14,12 @@ interface Props {
   onBack: () => void;
   /** Hides the combo chip's idle text to save space. */
   title?: string;
+  /** Telas baixas: menos margem e altura (sobra espaço para a arena). */
+  compact?: boolean;
 }
 
 /** Top HUD: back button, rolling score, combo chip and the record with an animated trophy. */
-export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GAME' }: Props) {
+export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GAME', compact }: Props) {
   // Record to beat = best at the start of the current game (resets when score is 0).
   const base = useRef(best);
   if (score === 0) base.current = best;
@@ -39,7 +41,7 @@ export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GA
   const shownBest = Math.max(best, score);
 
   return (
-    <GlassSurface radius={22} style={styles.wrap}>
+    <GlassSurface radius={22} style={[styles.wrap, compact && styles.compact]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Voltar ao menu" onPress={onBack} style={styles.back}>
         <Text style={styles.backText}>‹</Text>
       </Pressable>
@@ -100,6 +102,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minHeight: 64,
   },
+  compact: { marginTop: 4, marginBottom: 6, paddingVertical: 4, minHeight: 56 },
   coins: { color: NEON.gold, fontSize: 12, fontWeight: '900' },
   coinChip: { backgroundColor: 'rgba(250,204,21,0.12)', borderWidth: 1, borderColor: 'rgba(250,204,21,0.35)' },
   back: {

@@ -18,7 +18,8 @@ describe('engine', () => {
   });
 
   test('pontuação cresce com combo', () => {
-    expect(scoreFor({ lines: 2, placed: 4, perfect: false }, 3)).toBe(4 + 4 * 10 * 3);
+    expect(scoreFor({ lines: 2, placed: 4, perfect: false }, 3)).toBe(8 + 90 * 3);
+    expect(scoreFor({ lines: 1, placed: 3, perfect: false }, 1)).toBe(6 + 30);
   });
 
   test('não encaixa fora do tabuleiro nem sobre blocos', () => {

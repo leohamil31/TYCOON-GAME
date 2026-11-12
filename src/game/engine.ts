@@ -101,11 +101,36 @@ const fits = (grid: Grid, cells: Coord[]): boolean => {
 const fillRatio = (grid: Grid): number =>
   grid.reduce((a, row) => a + row.filter((v) => v !== null).length, 0) / (N * N);
 
-/** Bigger shapes are rarer, and rarer still as the board fills up. */
+/**
+ * Peças pequenas/médias são as mais comuns; as grandes (5 casas, 2x3 e 3x3) ficam raras,
+ * e ainda mais raras com o tabuleiro cheio.
+ */
 const shapeWeight = (cells: Coord[], fill: number): number => {
   const size = cells.length;
-  const base = size <= 2 ? 1.2 : size <= 4 ? 1.5 : size <= 5 ? 1 : 0.55;
-  return Math.max(0.05, base * (1 - fill * (size - 1) * 0.18));
+  const base = size <= 2 ? 1.5 : size <= 3 ? 1.8 : size <= 4 ? 1.4 : size <= 5 ? 0.45 : size <= 6 ? 0.3 : 0.12;
+  return Math.max(0.03, base * (1 - fill * (size - 1) * 0.2));
+};
+
+/** Quantas linhas+colunas a peça consegue completar no melhor encaixe possível. */
+const bestClear = (grid: Grid, cells: Coord[]): number => {
+  let best = 0;
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (!cells.every(([dr, dc]) => grid[r + dr]?.[c + dc] === null)) continue;
+      const hit = new Set(cells.map(([dr, dc]) => `${r + dr},${c + dc}`));
+      const rows = new Set(cells.map(([dr]) => r + dr));
+      const cols = new Set(cells.map(([, dc]) => c + dc));
+      let n = 0;
+      rows.forEach((rr) => {
+        if (grid[rr].every((v, cc) => v !== null || hit.has(`${rr},${cc}`))) n++;
+      });
+      cols.forEach((cc) => {
+        if (grid.every((row, rr) => row[cc] !== null || hit.has(`${rr},${cc}`))) n++;
+      });
+      if (n > best) best = n;
+    }
+  }
+  return best;
 };
 
 const pickWeighted = (cands: Coord[][], fill: number): Coord[] => {
@@ -148,22 +173,29 @@ export const dealPieces = (grid: Grid): Piece[] => {
   const count = GAME.PIECES_PER_DEAL;
   const colors = Array.from({ length: PIECE_COLOR_COUNT }, (_, i) => i).sort(() => Math.random() - 0.5);
 
+  // "Peça amiga": com frequência (mais ainda com o tabuleiro cheio) uma das peças completa uma linha.
+  const helpers = fill > 0.05 ? pool.filter((s) => bestClear(grid, s) > 0) : [];
+  const wantHelper = helpers.length > 0 && Math.random() < 0.45 + fill * 0.6;
+
   const build = (): Piece[] => {
     const used = new Set<Coord[]>();
     return Array.from({ length: count }, (_, i) => {
-      const fresh = pool.filter((s) => !used.has(s));
-      const cells = pickWeighted(fresh.length > 0 ? fresh : pool, fill);
+      const source = i === 0 && wantHelper ? helpers : pool;
+      const fresh = source.filter((s) => !used.has(s));
+      const cells = pickWeighted(fresh.length > 0 ? fresh : source, fill);
       used.add(cells);
       return { id: nextId++, cells, color: colors[i % colors.length] };
     });
   };
 
+  // Procura uma mão em que as 3 peças cabem em sequência (mais tentativas = menos "mão impossível").
   let best = build();
-  for (let i = 0; i < 8; i++) {
-    if (solvable(grid, best, { remaining: 2500 })) return best;
+  for (let i = 0; i < 16; i++) {
+    if (solvable(grid, best, { remaining: 3000 })) break;
     best = build();
   }
-  return best;
+  // Embaralha a posição para a peça amiga não ficar sempre na 1ª casa da bandeja.
+  return best.sort(() => Math.random() - 0.5);
 };
 
 export interface ClearedCell {
@@ -219,7 +251,9 @@ export const placePiece = (grid: Grid, piece: Piece, r: number, c: number): Plac
 export const scoreFor = (
   { lines, placed, perfect }: Pick<PlaceResult, 'lines' | 'placed' | 'perfect'>,
   combo: number,
-): number => placed + lines * lines * 10 * Math.max(1, combo) + (perfect ? 100 : 0);
+): number =>
+  // Pontuação generosa: 2 por casa + 30/90/180/300 por 1/2/3/4 linhas, multiplicado pelo combo.
+  placed * 2 + (lines > 0 ? (lines * 15 + lines * lines * 15) * Math.max(1, combo) : 0) + (perfect ? 300 : 0);
 
 /** Nearest legal anchor within one cell of the desired one, so drops feel forgiving. */
 export const snapPlacement = (
