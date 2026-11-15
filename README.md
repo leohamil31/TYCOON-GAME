@@ -2,7 +2,7 @@
 
 Jogo de blocos 10x10 (estilo Block Blast) com combos, batalha online 1v1, loja, amigos e tabuleiros animados.
 
-## ▶️ [**JOGAR AGORA: https://leohamil31.github.io/tycoon-game-/**](https://leohamil31.github.io/tycoon-game-/)
+## ▶️ [**JOGAR AGORA: https://leohamil31.github.io/TYCOON-GAME/**](https://leohamil31.github.io/TYCOON-GAME/)
 
 - `src/`: app React Native + TypeScript (roda na web via react-native-web)
 - `server/`: API Node/Express + PostgreSQL (amigos, loja, inventário)
