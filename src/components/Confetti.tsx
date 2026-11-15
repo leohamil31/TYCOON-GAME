@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { BLOCK_COLORS } from '../constants';
-import { USE_NATIVE_DRIVER } from '../theme';
+import { USE_NATIVE_DRIVER, LITE } from '../theme';
 
 const rand = (seed: number) => {
   const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -18,7 +18,8 @@ interface Props {
 }
 
 /** Chuva de confete leve: um único Animated.Value movimenta todos os pedaços (só transform/opacity). */
-export const Confetti = memo(function Confetti({ count = 40, duration = 2600, loops = 2 }: Props) {
+export const Confetti = memo(function Confetti({ count: wanted = 40, duration = 2600, loops = 2 }: Props) {
+  const count = LITE ? Math.ceil(wanted / 3) : wanted;
   const { width, height } = useWindowDimensions();
   const t = useRef(new Animated.Value(0)).current;
 

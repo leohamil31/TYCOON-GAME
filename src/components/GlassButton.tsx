@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { alpha, glass, gradient, PALETTE, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, glass, gradient, PALETTE, USE_NATIVE_DRIVER, LITE } from '../theme';
 import { AnimatedIcon, type Motion } from './AnimatedIcon';
 import { haptic, play } from '../services/sfx';
 
@@ -40,7 +40,7 @@ export function GlassButton({
   const [width, setWidth] = useState(300);
 
   useEffect(() => {
-    if (!pulse) return;
+    if (!pulse || LITE) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(beat, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
@@ -58,6 +58,7 @@ export function GlassButton({
       easing: Easing.out(Easing.back(1.4)),
       useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
+    if (LITE) return; // modo leve: sem o reflexo que passa pelo botão
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(2400 + delay),

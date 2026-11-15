@@ -32,7 +32,7 @@ import { useBlocks, type GameMode } from '../state/useBlocks';
 import { useProfile } from '../state/useProfile';
 import { useProgress } from '../state/useProgress';
 import { addScore } from '../storage';
-import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER, LITE } from '../theme';
 import type { PlayerView, Snapshot } from '../types';
 import type { Attack } from '../services/battle';
 import { ATTACK_COOLDOWN_MS, type IncomingAttack } from '../state/useBattle';
@@ -721,8 +721,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             borderLeftColor: alpha(frameTone, 0.6),
             borderRightColor: alpha(frameTone, 0.35),
             shadowColor: combo >= 2 || boost > 0 ? frameTone : theme.glow,
-            shadowOpacity: 0.45 + Math.min(0.45, combo * 0.1),
-            shadowRadius: 18 + Math.min(20, combo * 4),
+            shadowOpacity: LITE ? 0.35 : 0.45 + Math.min(0.45, combo * 0.1),
+            shadowRadius: LITE ? 10 : 18 + Math.min(20, combo * 4),
           },
         ]}
       >

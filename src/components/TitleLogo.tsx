@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { NEON, USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
+import { NEON, USE_NATIVE_DRIVER, FONT_DISPLAY, LITE } from '../theme';
 import { Block } from './Piece';
 
 interface FloatingCubeProps {
@@ -19,6 +19,7 @@ function FloatingCube({ color, size, duration, delay, ...pos }: FloatingCubeProp
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (LITE) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(t, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),
@@ -60,6 +61,7 @@ export function TitleLogo({ compact }: { compact?: boolean }) {
   const flicker = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    if (LITE) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(2600),

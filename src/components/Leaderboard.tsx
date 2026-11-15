@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View 
 import { backend } from '../services/api';
 import type { RankEntry } from '../shop/types';
 import { useProfile } from '../state/useProfile';
-import { alpha, glass, NEON, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, glass, NEON, USE_NATIVE_DRIVER, LITE } from '../theme';
 import type { ScoreEntry } from '../types';
 import { AnimatedIcon } from './AnimatedIcon';
 import { Odometer } from './Odometer';
@@ -37,7 +37,7 @@ function Row({ entry, rank, highlight }: { entry: RowData; rank: number; highlig
   }, [enter, entry.score, rank]);
 
   useEffect(() => {
-    if (rank !== 0 && !highlight) return;
+    if ((rank !== 0 && !highlight) || LITE) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(glow, { toValue: 1, duration: 1100, useNativeDriver: USE_NATIVE_DRIVER }),

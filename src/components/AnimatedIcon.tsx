@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
-import { tightText, USE_NATIVE_DRIVER } from '../theme';
+import { tightText, USE_NATIVE_DRIVER, LITE } from '../theme';
 import { Icon } from './icons/Icon';
 import { isIconName } from './icons/data';
 
@@ -38,7 +38,8 @@ export function AnimatedIcon({
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!active) {
+    // Modo leve: ícones parados (dezenas de animações em loop pesam no Android).
+    if (!active || LITE) {
       t.setValue(0);
       return;
     }

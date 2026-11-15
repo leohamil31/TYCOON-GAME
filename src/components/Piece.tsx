@@ -2,7 +2,7 @@ import React, { createContext, memo, useContext, useEffect, useRef } from 'react
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { BLOCK_COLORS, GARBAGE } from '../constants';
 import { pieceDims } from '../game/engine';
-import { alpha, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, USE_NATIVE_DRIVER, LITE } from '../theme';
 import type { Piece } from '../types';
 
 const shade = (hex: string, f: number): string => {
@@ -86,7 +86,7 @@ export const Block = memo(function Block({
           borderColor: base,
           opacity: ghost ? 0.5 : 1,
           shadowColor: base,
-          shadowOpacity: ghost ? 0 : 0.9,
+          shadowOpacity: ghost || LITE ? 0 : 0.9,
           shadowRadius: size * 0.25,
           shadowOffset: { width: 0, height: 0 },
           alignItems: 'center',
@@ -167,11 +167,12 @@ function CubeBlock({ base, size, ghost }: { base: string; size: number; ghost?: 
         opacity: ghost ? 0.5 : 1,
         borderWidth: ghost ? 2 : 0,
         borderColor: '#fff',
+        // Modo leve: sem sombra por bloco (100 sombras = muito trabalho para a GPU); o volume vem da face lateral.
         shadowColor: '#000',
-        shadowOpacity: ghost ? 0 : 0.45,
+        shadowOpacity: ghost || LITE ? 0 : 0.45,
         shadowRadius: 5,
         shadowOffset: { width: 0, height: depth * 0.8 },
-        elevation: ghost ? 0 : 3,
+        elevation: ghost || LITE ? 0 : 3,
       }}
     >
       <View

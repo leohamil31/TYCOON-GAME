@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
-import { USE_NATIVE_DRIVER } from '../theme';
+import { LITE, USE_NATIVE_DRIVER } from '../theme';
 import { Background } from './Background';
 
 const rand = (seed: number) => {
@@ -11,8 +11,9 @@ const mix = (a: number[], b: number[], t: number) => a.map((v, i) => Math.round(
 
 /** Valor 0→1 em loop linear (translações) ou ida-e-volta (pulsos). */
 function useLoop(duration: number, pingPong = false): Animated.Value {
-  const v = useRef(new Animated.Value(0)).current;
+  const v = useRef(new Animated.Value(LITE ? 0.5 : 0)).current;
   useEffect(() => {
+    if (LITE) return; // modo leve: cenário parado
     const up = Animated.timing(v, {
       toValue: 1,
       duration,

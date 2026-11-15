@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
-import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER, LITE } from '../theme';
 import { AnimatedIcon } from './AnimatedIcon';
 import { GlassSurface } from './GlassSurface';
 
@@ -16,6 +16,7 @@ interface Props {
 function Avatar({ name }: { name: string }) {
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (LITE) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),

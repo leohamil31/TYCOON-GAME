@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { cleanPlayerName } from '../shop/types';
 import { useProfile } from '../state/useProfile';
 import { getSfxSettings, haptic, onSfxSettings, play, setSfxSettings } from '../services/sfx';
+import { LITE, LITE_AUTO, setLite } from '../perf';
 import { saveName } from '../storage';
 import { alpha, NEON } from '../theme';
 import { ActionButton, Banner, GlassModal } from './GlassModal';
@@ -77,6 +78,18 @@ export function SettingsModal({ visible, onClose, onOpenShop }: Props) {
           }}
         />
       </View>
+      <Text style={styles.label}>DESEMPENHO</Text>
+      <ActionButton
+        label={LITE ? '⚡ Modo leve: ligado' : '✨ Modo leve: desligado'}
+        tone={LITE ? NEON.green : '#94a3b8'}
+        ghost={!LITE}
+        onPress={() => setLite(!LITE)}
+      />
+      <Text style={styles.hintText}>
+        {LITE
+          ? `Mais fluido: sem desfoque e fundo parado${LITE_AUTO ? ' (ligado automaticamente neste aparelho)' : ''}. Desligue para o visual completo.`
+          : 'Visual completo com desfoque e fundo animado. Se o jogo travar, ligue o modo leve.'}
+      </Text>
       <View style={{ marginTop: 16 }}>
         <ActionButton
           label="🎨 Trocar tabuleiro"
@@ -93,6 +106,7 @@ export function SettingsModal({ visible, onClose, onOpenShop }: Props) {
 }
 
 const styles = StyleSheet.create({
+  hintText: { color: '#94a3b8', fontSize: 11.5, marginTop: 6, lineHeight: 16 },
   label: { color: '#94a3b8', fontSize: 11, letterSpacing: 2, fontWeight: '800', marginTop: 8, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center' },
   input: {

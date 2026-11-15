@@ -1,4 +1,7 @@
 import { Platform, type ViewStyle } from 'react-native';
+import { LITE } from './perf';
+
+export { LITE };
 
 /** '#rrggbb' + alpha (0..1) -> rgba() string. */
 export const alpha = (hex: string, a: number): string => {
@@ -13,11 +16,12 @@ const isWebPlatform = Platform.OS === 'web';
  * fica mais opaco para não "lavar" o painel sobre o cenário animado.
  */
 export const glass: ViewStyle = {
-  backgroundColor: isWebPlatform ? 'rgba(15, 23, 42, 0.55)' : 'rgba(13, 20, 40, 0.86)',
+  // Modo leve: sem desfoque (o que mais trava no Android), então o fundo fica mais opaco.
+  backgroundColor: isWebPlatform && !LITE ? 'rgba(15, 23, 42, 0.55)' : 'rgba(13, 20, 40, 0.88)',
   borderWidth: 1,
   borderColor: 'rgba(186, 230, 253, 0.18)',
   borderTopColor: 'rgba(255, 255, 255, 0.32)',
-  ...(Platform.OS === 'web'
+  ...(Platform.OS === 'web' && !LITE
     ? ({ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' } as unknown as ViewStyle)
     : null),
 };
@@ -41,17 +45,17 @@ export const gradient = (angle: number, stops: string[], fallback: string): View
 
 /** Vidro "forte": blur maior, borda superior brilhante e sombra profunda. */
 export const glassStrong: ViewStyle = {
-  backgroundColor: isWeb ? 'rgba(10, 16, 38, 0.62)' : 'rgba(10, 16, 38, 0.9)',
+  backgroundColor: isWeb && !LITE ? 'rgba(10, 16, 38, 0.62)' : 'rgba(10, 16, 38, 0.92)',
   borderWidth: 1,
   borderColor: 'rgba(148, 197, 255, 0.16)',
   borderTopColor: 'rgba(255, 255, 255, 0.38)',
   shadowColor: '#000',
-  shadowOpacity: 0.5,
-  shadowRadius: 24,
+  shadowOpacity: LITE ? 0.35 : 0.5,
+  shadowRadius: LITE ? 10 : 24,
   shadowOffset: { width: 0, height: 12 },
   // Android: elevation em fundo translúcido desenha um retângulo escuro por trás — por isso fica sem.
   elevation: 0,
-  ...(isWeb
+  ...(isWeb && !LITE
     ? ({
         backdropFilter: 'blur(22px) saturate(160%)',
         WebkitBackdropFilter: 'blur(22px) saturate(160%)',

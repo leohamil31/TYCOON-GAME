@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { alpha, gradient, PALETTE, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, gradient, PALETTE, USE_NATIVE_DRIVER, LITE } from '../theme';
 
 function Orb({ color, size, x, y, dx, dy, duration }: { color: string; size: number; x: number; y: number; dx: number; dy: number; duration: number }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (LITE) return; // modo leve: luzes paradas
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(t, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: USE_NATIVE_DRIVER }),

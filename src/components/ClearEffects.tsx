@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { BLOCK_COLORS } from '../constants';
-import { USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
+import { USE_NATIVE_DRIVER, FONT_DISPLAY, LITE } from '../theme';
 import type { ClearFx, PlacedFx } from '../types';
 
 const native = USE_NATIVE_DRIVER;
@@ -108,8 +108,8 @@ function Explosion({ fx, cell, boardSize }: { fx: ClearFx; cell: number; boardSi
 
       {/* Estilhaços: cada bloco atingido vira 4 fragmentos */}
       {fx.cleared.map(({ r, c, color }, i) =>
-        [0, 1, 2, 3].map((q) => {
-          const half = (cell - 4) / 2;
+        (LITE ? [0] : [0, 1, 2, 3]).map((q) => {
+          const half = LITE ? cell - 4 : (cell - 4) / 2;
           const fx0 = c * cell + 2 + (q % 2) * half;
           const fy0 = r * cell + 2 + Math.floor(q / 2) * half;
           // direção: do centro da explosão para o fragmento (+ leve variação)
@@ -436,7 +436,7 @@ function FloatImpl({ placed, cell }: { placed: PlacedFx; cell: number }) {
 const shadow = { textShadowColor: 'rgba(0,0,0,0.75)', textShadowOffset: { width: 0, height: 3 }, textShadowRadius: 8 };
 
 const styles = StyleSheet.create({
-  beam: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 6, shadowColor: '#fff', shadowOpacity: 1, shadowRadius: 16 },
+  beam: { position: 'absolute', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 6, shadowColor: '#fff', shadowOpacity: LITE ? 0 : 1, shadowRadius: 16 },
   ring: { position: 'absolute', borderWidth: 5, borderColor: '#f0abfc' },
   banner: { position: 'absolute', left: 0, right: 0, top: '32%', alignItems: 'center' },
   praise: { fontWeight: '900', letterSpacing: 2, ...shadow },
