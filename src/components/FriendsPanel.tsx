@@ -96,7 +96,7 @@ export function FriendsPanel({ visible, onClose, initialCode = '', onChallenge }
   const ranking = [...friends.map((f) => ({ ...f, self: false })), ...(me ? [me] : [])].sort((a, b) => b.best - a.best);
 
   return (
-    <GlassModal visible={visible} onClose={onClose} title="AMIGOS" icon="👥" tone={NEON.pink}>
+    <GlassModal visible={visible} onClose={onClose} title="AMIGOS" icon="users" tone={NEON.pink}>
       {mode === 'local' && (
         <Banner text="Modo demonstração: sem servidor, os amigos adicionados são simulados. Configure o Supabase (src/services/supabase.ts) para amigos reais." />
       )}
@@ -155,7 +155,7 @@ export function FriendsPanel({ visible, onClose, initialCode = '', onChallenge }
               </View>
             )}
             <View style={styles.numRow}>
-              <AnimatedIcon glyph="🏆" size={13} motion="float" speed={2600} />
+              <AnimatedIcon glyph="trophy" color={NEON.gold} size={13} motion="float" speed={2600} />
               <Odometer value={f.best} fontSize={15} color={NEON.gold} />
             </View>
           </View>

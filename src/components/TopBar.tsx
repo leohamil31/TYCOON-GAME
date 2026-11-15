@@ -56,7 +56,7 @@ function Chip({ icon, text, tone, onPress, label }: { icon: string; text: string
         { borderColor: alpha(tone, hovered || pressed ? 0.9 : 0.4), backgroundColor: alpha(tone, hovered || pressed ? 0.26 : 0.12) },
       ]}
     >
-      <AnimatedIcon glyph={icon} size={16} motion="float" speed={2400} />
+      <AnimatedIcon glyph={icon} color={tone} glow size={16} motion="float" speed={2400} />
       <Text style={[styles.chipText, { color: tone }]}>{text}</Text>
     </Pressable>
   );
@@ -76,9 +76,9 @@ export function TopBar({ name, coins, best, onWallet, onProfile }: Props) {
         </View>
       </Pressable>
       <View style={styles.chips}>
-        <Chip icon="🏆" text={String(best)} tone={NEON.gold} label={`Recorde ${best}`} />
+        <Chip icon="trophy" text={String(best)} tone={NEON.gold} label={`Recorde ${best}`} />
         <View style={{ width: 8 }} />
-        <Chip icon="🪙" text={String(coins)} tone={NEON.cyan} onPress={onWallet} label="Abrir loja" />
+        <Chip icon="coins" text={String(coins)} tone={NEON.cyan} onPress={onWallet} label="Abrir loja" />
       </View>
     </GlassSurface>
   );

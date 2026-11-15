@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { showRewardedAd } from '../services/ads';
-import { alpha, glassStrong, gradient, NEON, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, glassStrong, gradient, NEON, USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
 import { AnimatedIcon } from './AnimatedIcon';
 import { Confetti } from './Confetti';
 import { Odometer } from './Odometer';
@@ -160,7 +160,7 @@ export function GameOverModal({
               motion={isRecord ? 'pulse' : 'wiggle'}
               speed={isRecord ? 900 : 1600}
             />
-            <Text style={[styles.title, { textShadowColor: tone }]}>{isRecord ? 'NOVO RECORDE!' : 'SEM JOGADAS!'}</Text>
+            <Text style={[styles.title, FONT_DISPLAY, { textShadowColor: tone }]}>{isRecord ? 'NOVO RECORDE!' : 'SEM JOGADAS!'}</Text>
 
             <View style={styles.scoreBox}>
               <Text style={styles.scoreLabel}>PONTUAÇÃO</Text>
@@ -191,7 +191,7 @@ export function GameOverModal({
                       disabled={loading}
                       style={({ pressed }: { pressed: boolean }) => [styles.rescue, pressed && { transform: [{ scale: 0.94 }] }]}
                     >
-                      <Text style={styles.rescueIcon}>{r.icon}</Text>
+                      <AnimatedIcon glyph={r.icon} color="#c4b5fd" glow size={26} motion="float" speed={2200} />
                       <Text style={styles.rescueLabel} numberOfLines={1}>
                         {r.label}
                       </Text>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { BLOCK_COLORS } from '../constants';
-import { USE_NATIVE_DRIVER } from '../theme';
+import { USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
 import type { ClearFx, PlacedFx } from '../types';
 
 const native = USE_NATIVE_DRIVER;
@@ -147,6 +147,7 @@ function Explosion({ fx, cell, boardSize }: { fx: ClearFx; cell: number; boardSi
         <Animated.Text
           style={[
             styles.blastLabel,
+            FONT_DISPLAY,
             {
               left: cx - 70,
               top: cy - cell * 0.8,
@@ -253,10 +254,10 @@ function LineClear({ fx, cell, boardSize, fxStyle }: { fx: ClearFx; cell: number
           },
         ]}
       >
-        <Text style={[styles.praise, { color: praiseColor(fx), fontSize: Math.min(44, boardSize * 0.11) }]}>{praise(fx)}</Text>
-        {hot && <Text style={styles.combo}>🔥 COMBO x{fx.combo}</Text>}
+        <Text style={[styles.praise, FONT_DISPLAY, { color: praiseColor(fx), fontSize: Math.min(48, boardSize * 0.12) }]}>{praise(fx)}</Text>
+        {hot && <Text style={[styles.combo, FONT_DISPLAY]}>🔥 COMBO x{fx.combo}</Text>}
         {fx.points > 0 && (
-          <Text style={styles.points}>
+          <Text style={[styles.points, FONT_DISPLAY]}>
             +{fx.points}
             {fx.boosted ? '  ⚡x2' : ''}
           </Text>
@@ -418,6 +419,7 @@ function FloatImpl({ placed, cell }: { placed: PlacedFx; cell: number }) {
       pointerEvents="none"
       style={[
         styles.float,
+        FONT_DISPLAY,
         {
           left: cx * cell + cell / 2 - 40,
           top: cy * cell,

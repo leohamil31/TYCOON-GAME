@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER } from '../theme';
 import type { PlayerView } from '../types';
+import { Icon } from './icons/Icon';
 import { MiniBoard } from './LiveScoreboard';
 import { Odometer } from './Odometer';
 
@@ -37,7 +38,7 @@ export function BattleHud({ me, opp, timeLeft, myScore, combo, coins, onBack }: 
   return (
     <View style={[styles.bar, glassStrong]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Sair da batalha" onPress={onBack} style={styles.back}>
-        <Text style={styles.backText}>‹</Text>
+        <Icon name="back" size={20} color="#e2e8f0" stroke={2.6} />
       </Pressable>
 
       <View style={[styles.side, lead >= 0 && styles.leading]}>

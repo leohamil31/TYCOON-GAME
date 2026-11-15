@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { alpha, USE_NATIVE_DRIVER } from '../theme';
 import { AnimatedIcon } from './AnimatedIcon';
+import { haptic, play } from '../services/sfx';
 import { GlassSurface } from './GlassSurface';
 
 export interface NavItem {
@@ -23,7 +24,11 @@ function NavButton({ item }: { item: NavItem }) {
       onPress={item.onPress}
       onHoverIn={() => to(1.08)}
       onHoverOut={() => to(1)}
-      onPressIn={() => to(0.92)}
+      onPressIn={() => {
+        to(0.9);
+        play('tap');
+        haptic('light');
+      }}
       onPressOut={() => to(1)}
       style={styles.item}
     >
@@ -40,7 +45,7 @@ function NavButton({ item }: { item: NavItem }) {
               },
             ]}
           >
-            <AnimatedIcon glyph={item.icon} size={22} motion="float" speed={2600} />
+            <AnimatedIcon glyph={item.icon} color={item.tone} glow size={22} motion="float" speed={2600} />
           </View>
           <Text style={styles.label}>{item.label}</Text>
         </Animated.View>

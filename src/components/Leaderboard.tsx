@@ -85,9 +85,9 @@ function Row({ entry, rank, highlight }: { entry: RowData; rank: number; highlig
 type Tab = 'global' | 'friends' | 'local';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'global', label: '🌎 Global' },
-  { id: 'friends', label: '👥 Amigos' },
-  { id: 'local', label: '📱 Aparelho' },
+  { id: 'global', label: 'Global' },
+  { id: 'friends', label: 'Amigos' },
+  { id: 'local', label: 'Aparelho' },
 ];
 
 interface Props {
@@ -147,9 +147,9 @@ export function Leaderboard({ entries, highlightId = null, limit = 5 }: Props) {
   return (
     <View style={[styles.card, glass]}>
       <View style={styles.header}>
-        <AnimatedIcon glyph="🏆" size={22} motion="float" />
+        <AnimatedIcon glyph="trophy" color={NEON.gold} glow size={22} motion="float" />
         <Text style={styles.title}>RANKING</Text>
-        <AnimatedIcon glyph="✨" size={16} motion="spin" speed={5000} style={{ marginLeft: 'auto' }} />
+        <AnimatedIcon glyph="sparkles" color={NEON.gold} size={16} motion="pulse" speed={2400} style={{ marginLeft: 'auto' }} />
       </View>
       <View style={styles.tabs}>
         {TABS.filter((t) => online || t.id === 'local').map((t) => (

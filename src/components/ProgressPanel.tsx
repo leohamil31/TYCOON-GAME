@@ -7,6 +7,7 @@ import { useProgress } from '../state/useProgress';
 import { alpha, glass, gradient, NEON, USE_NATIVE_DRIVER } from '../theme';
 import { AnimatedIcon } from './AnimatedIcon';
 import { ChestModal } from './ChestModal';
+import { Icon } from './icons/Icon';
 
 /** Barra que enche suavemente até `value` (0..1). */
 function Bar({ value, tone, height = 8 }: { value: number; tone: string; height?: number }) {
@@ -153,7 +154,7 @@ export function ProgressPanel({ onToast }: { onToast?: (text: string) => void })
               { transform: [{ scale: chestPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) }] },
             ]}
           >
-            <Text style={{ fontSize: 26, opacity: chests > 0 ? 1 : 0.45 }}>🎁</Text>
+            <Icon name="gift" size={28} color={chests > 0 ? NEON.gold : '#64748b'} glow={chests > 0} />
             {chests > 0 && (
               <View style={styles.chestBadge}>
                 <Text style={styles.chestBadgeText}>{chests}</Text>
@@ -165,7 +166,7 @@ export function ProgressPanel({ onToast }: { onToast?: (text: string) => void })
 
       {/* Recompensa diária + sequência */}
       <View style={styles.dailyRow}>
-        <AnimatedIcon glyph="🔥" size={22} motion={streak > 0 ? 'pulse' : 'float'} speed={1200} active={streak > 0} />
+        <AnimatedIcon glyph="flame" color="#fb923c" glow size={22} motion={streak > 0 ? 'pulse' : 'float'} speed={1200} active={streak > 0} />
         <View style={{ flex: 1, marginLeft: 8 }}>
           <Text style={styles.dailyTitle}>{streak > 0 ? `${streak} dia${streak > 1 ? 's' : ''} seguido${streak > 1 ? 's' : ''}` : 'Comece sua sequência'}</Text>
           <View style={styles.dots}>
@@ -195,7 +196,10 @@ export function ProgressPanel({ onToast }: { onToast?: (text: string) => void })
       </View>
 
       {/* Missões */}
-      <Text style={styles.section}>🎯 MISSÕES DE HOJE</Text>
+      <View style={styles.sectionRow}>
+        <Icon name="target" size={14} color="#a5b4fc" />
+        <Text style={styles.section}>MISSÕES DE HOJE</Text>
+      </View>
       {daily ? (
         daily.missions.map((m) => <MissionRow key={m.id} m={m} busy={busy} onClaim={() => void getMission(m)} />)
       ) : (
@@ -272,7 +276,8 @@ const styles = StyleSheet.create({
   dailyBtn: { backgroundColor: NEON.gold, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, minWidth: 96, alignItems: 'center' },
   dailyBtnText: { color: '#0b1022', fontWeight: '900', fontSize: 13 },
   dailyDone: { color: '#86efac', fontSize: 12, fontWeight: '800' },
-  section: { color: '#a5b4fc', fontSize: 10.5, fontWeight: '900', letterSpacing: 1.5, marginTop: 14, marginBottom: 6 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, marginBottom: 6 },
+  section: { color: '#a5b4fc', fontSize: 10.5, fontWeight: '900', letterSpacing: 1.5 },
   mission: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7 },
   mIcon: { fontSize: 22, width: 28, textAlign: 'center' },
   mTitle: { color: '#f1f5f9', fontSize: 13, fontWeight: '800' },

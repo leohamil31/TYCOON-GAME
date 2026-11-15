@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NEON, USE_NATIVE_DRIVER } from '../theme';
 import { AnimatedIcon } from './AnimatedIcon';
+import { Icon } from './icons/Icon';
 import { GlassSurface } from './GlassSurface';
 import { Odometer } from './Odometer';
 
@@ -24,6 +25,16 @@ export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GA
   const base = useRef(best);
   if (score === 0) base.current = best;
   const beaten = base.current > 0 && score > base.current;
+  // "Pulo" do placar a cada ponto ganho (maior em jogadas grandes).
+  const pop = useRef(new Animated.Value(1)).current;
+  const lastScore = useRef(score);
+  useEffect(() => {
+    const gain = score - lastScore.current;
+    lastScore.current = score;
+    if (gain <= 0) return;
+    pop.setValue(gain >= 90 ? 1.3 : gain >= 30 ? 1.18 : 1.08);
+    Animated.spring(pop, { toValue: 1, friction: 4, tension: 260, useNativeDriver: USE_NATIVE_DRIVER }).start();
+  }, [score, pop]);
 
   const chip = useRef(new Animated.Value(1)).current;
   const banner = useRef(new Animated.Value(0)).current;
@@ -43,12 +54,14 @@ export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GA
   return (
     <GlassSurface radius={22} style={[styles.wrap, compact && styles.compact]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Voltar ao menu" onPress={onBack} style={styles.back}>
-        <Text style={styles.backText}>‹</Text>
+        <Icon name="back" size={22} color="#e2e8f0" stroke={2.6} />
       </Pressable>
 
       <View style={styles.block}>
         <Text style={styles.label}>PONTOS</Text>
-        <Odometer value={score} fontSize={34} glow="rgba(125,211,252,0.7)" />
+        <Animated.View style={{ transform: [{ scale: pop }], alignSelf: 'flex-start' }}>
+          <Odometer value={score} fontSize={34} glow="rgba(125,211,252,0.7)" />
+        </Animated.View>
       </View>
 
       <View style={styles.center}>
@@ -72,7 +85,7 @@ export function ScoreHud({ score, best, combo, coins, onBack, title = 'TYCOON GA
 
       <View style={[styles.block, styles.right]}>
         <View style={styles.recordRow}>
-          <AnimatedIcon glyph="🏆" size={18} motion={beaten ? 'pulse' : 'float'} speed={beaten ? 700 : 2600} />
+          <AnimatedIcon glyph="trophy" color={NEON.gold} glow size={18} motion={beaten ? 'pulse' : 'float'} speed={beaten ? 700 : 2600} />
           <Text style={[styles.label, { marginLeft: 4 }]}>RECORDE</Text>
         </View>
         <Odometer value={shownBest} fontSize={22} color={NEON.gold} glow={beaten ? 'rgba(250,204,21,0.9)' : undefined} />

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -16,13 +16,13 @@ import { ClearEffects, FloatScore } from '../components/ClearEffects';
 import { GameOverModal, type RescueOption } from '../components/GameOverModal';
 import { BattleHud } from '../components/BattleHud';
 import { Block, PopIn, PieceView, TrayPiece } from '../components/Piece';
-import { PowerBar, type PowerChip } from '../components/PowerBar';
+import { PowerBar, type ChipDrag, type PowerChip } from '../components/PowerBar';
 import { ScoreHud } from '../components/ScoreHud';
 import { ShopModal } from '../components/ShopModal';
 import { ThemedBackdrop } from '../components/ThemedBackdrop';
 import { Toast, type ToastMsg } from '../components/Toast';
 import { BLOCK_COLORS, GAME } from '../constants';
-import { fillOf, garbageFor, pieceDims, pieceFits, snapPlacement } from '../game/engine';
+import { area3, bestBlast, clampAim, fillOf, garbageFor, pieceDims, pieceFits, snapPlacement } from '../game/engine';
 import { initAds } from '../services/ads';
 import { haptic, play } from '../services/sfx';
 import { buyRemoveAds, disposeIap, initIap, restorePurchases } from '../services/iap';
@@ -36,8 +36,9 @@ import { alpha, gradient, NEON, PALETTE, USE_NATIVE_DRIVER } from '../theme';
 import type { PlayerView, Snapshot } from '../types';
 import type { Attack } from '../services/battle';
 import { ATTACK_COOLDOWN_MS, type IncomingAttack } from '../state/useBattle';
-import { AimBoard, type AimMode } from '../components/AimBoard';
 import { SkinContext } from '../components/Piece';
+import { ITEM_ICON } from '../components/icons/data';
+import { Icon } from '../components/icons/Icon';
 
 const N = GAME.GRID_SIZE;
 const PAD = 4; // respiro entre a moldura e a grade (o "poço" escuro onde ficam as casas)
@@ -121,6 +122,73 @@ function usePulse(on: boolean, duration: number) {
   return v;
 }
 
+const EMPTY_SET: ReadonlySet<string> = new Set();
+
+/**
+ * Uma casa do tabuleiro. Memorizada: ao arrastar uma peça só as casas que mudam (sombra, linha prevista,
+ * mira) são redesenhadas — o resto do tabuleiro fica parado (60 FPS mesmo em aparelhos simples).
+ */
+const BoardCell = memo(function BoardCell({
+  v,
+  size,
+  ghost,
+  lineTone,
+  aimTone,
+  popId,
+  socket,
+  socketEdge,
+  pulse,
+}: {
+  v: number | null;
+  size: number;
+  /** Cor da peça arrastada que cairia aqui (sombra). */
+  ghost: number | null;
+  /** Linha/coluna que a jogada vai completar. */
+  lineTone: string | null;
+  /** Área da bomba/entulho. */
+  aimTone: string | null;
+  /** Id da jogada que acabou de colocar este bloco (anima o encaixe). */
+  popId: number | null;
+  socket: string;
+  socketEdge: string;
+  pulse: Animated.Value;
+}) {
+  return (
+    <View style={{ width: size, height: size }}>
+      <View style={[styles.slotCell, { borderRadius: size * 0.22, backgroundColor: socket, borderColor: socketEdge }]} />
+      {v !== null ? (
+        popId !== null ? (
+          <PopIn key={`p${popId}`} size={size}>
+            <Block color={v} size={size} />
+          </PopIn>
+        ) : (
+          <Block color={v} size={size} />
+        )
+      ) : ghost !== null ? (
+        <Block color={ghost} size={size} ghost />
+      ) : null}
+      {lineTone && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.lineHit,
+            { borderRadius: size * 0.22, borderColor: lineTone, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }) },
+          ]}
+        />
+      )}
+      {aimTone && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.aimHit,
+            { borderRadius: size * 0.22, borderColor: aimTone, backgroundColor: aimTone.startsWith('#') ? alpha(aimTone, 0.35) : aimTone },
+          ]}
+        />
+      )}
+    </View>
+  );
+});
+
 export function GameScreen({ mode, onExit, battle }: Props) {
   const win = useWindowDimensions();
   const [area, setArea] = useState<{ w: number; h: number } | null>(null);
@@ -158,7 +226,8 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const have = (id: string) => profile?.inventory[id] ?? 0;
 
   const [shopOpen, setShopOpen] = useState(false);
-  const [aim, setAim] = useState<AimMode | null>(null);
+  /** Bomba/entulho sendo arrastado da barra até o tabuleiro (coordenadas de página). */
+  const [itemDrag, setItemDrag] = useState<{ id: 'bomb' | 'rubble'; x: number; y: number } | null>(null);
   const lastSent = useRef(0);
   const [toast, setToast] = useState<ToastMsg | null>(null);
   const toastId = useRef(0);
@@ -260,13 +329,13 @@ export function GameScreen({ mode, onExit, battle }: Props) {
 
   // ------------------------------------------------------------- power-ups (solo e online)
   const busy = useRef(false);
-  const applyItem = async (id: string) => {
+  const applyItem = async (id: string, opts: { auto?: boolean } = {}) => {
     const s = state;
     const item = itemById(id);
     if (!s || !item || busy.current) return;
-    if (matchLocked) return say('Espere a partida começar!', 'info', '⏳');
-    if (frozen) return say('Você está congelado!', 'info', '❄️');
-    if (item.battle && !battle) return say('Ataques só funcionam na batalha online.', 'info', item.icon);
+    if (matchLocked) return say('Espere a partida começar!', 'info', 'timer');
+    if (frozen) return say('Você está congelado!', 'info', 'snowflake');
+    if (item.battle && !battle) return say('Ataques só funcionam na batalha online.', 'info', ITEM_ICON[id]);
     if (have(id) <= 0) {
       setShopOpen(true);
       return;
@@ -286,66 +355,112 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             : id === 'shield' && s.status !== 'over'
               ? 'O escudo é usado quando você fica sem jogadas.'
               : null;
-    if (why) return say(why, 'info', item.icon);
-    // Bombas abrem a mira primeiro; o item só é gasto ao confirmar.
+    if (why) return say(why, 'info', ITEM_ICON[id]);
+    // Bombas são arrastadas até o alvo. No resgate (fim de jogo) a bomba mira sozinha no melhor ponto.
+    if (id === 'bomb' && opts.auto) {
+      const spot = bestBlast(s.grid);
+      return fireItem('bomb', spot.r, spot.c);
+    }
     if (id === 'bomb' || id === 'rubble') {
-      setSelectedPiece(null);
-      setAim(id === 'bomb' ? 'blast' : 'rubble');
-      return;
+      haptic('light');
+      return say(id === 'bomb' ? 'Arraste a bomba até o tabuleiro!' : 'Arraste o entulho até o tabuleiro do rival!', 'info', 'hand');
     }
 
     busy.current = true;
     const err = await consume(id);
     busy.current = false;
-    if (err) return say(err, 'error', '⚠️');
+    if (err) return say(err, 'error', 'close');
     setSelectedPiece(null);
     if (id === 'boost_x2') {
       activateBoost();
-      say(`Pontos em dobro nas próximas ${BOOST_MOVES} jogadas!`, 'ok', '⚡');
+      say(`Pontos em dobro nas próximas ${BOOST_MOVES} jogadas!`, 'ok', 'zap');
     } else if (id === 'garbage' || id === 'freeze') {
       lastSent.current = Date.now();
       battle?.sendAttack(id === 'garbage' ? { kind: 'garbage', n: 4 } : { kind: 'freeze' });
       play('attackSend');
       track('attacks');
-      say(id === 'garbage' ? '4 blocos de lixo enviados!' : 'Bandeja do rival congelada!', 'ok', item.icon);
+      say(id === 'garbage' ? '4 blocos de lixo enviados!' : 'Bandeja do rival congelada!', 'ok', ITEM_ICON[id]);
     } else if (id === 'reroll') {
       reroll();
-      say('Peças novas na bandeja!', 'ok', '🔄');
+      say('Peças novas na bandeja!', 'ok', 'shuffle');
     } else if (id === 'undo') {
       undoMove();
-      say('Jogada desfeita.', 'ok', '↩️');
+      say('Jogada desfeita.', 'ok', 'undo');
     } else if (id === 'shield') {
       shield();
-      say('Escudo ativado! Espaço liberado.', 'ok', '🛡️');
+      say('Escudo ativado! Espaço liberado.', 'ok', 'shield');
     }
   };
 
-  /** Confirmação da mira: gasta o item e explode / lança o entulho. */
-  const fireAim = async (r: number, c: number) => {
-    const mode = aim;
-    setAim(null);
-    if (!mode || busy.current) return;
-    const id = mode === 'blast' ? 'bomb' : 'rubble';
-    busy.current = true;
-    const err = await consume(id);
-    busy.current = false;
-    if (err) return say(err, 'error', '⚠️');
-    if (mode === 'blast') {
-      bombAt(r, c);
+  /**
+   * Solta a bomba/entulho em (r, c): o efeito acontece NA HORA e o item é descontado no servidor em
+   * segundo plano (sem esperar a rede). O arraste só começa com estoque > 0, então a falha é rara.
+   */
+  const fireItem = (id: 'bomb' | 'rubble', r: number, c: number) => {
+    if (id === 'bomb') {
+      if (!bombAt(r, c)) return say('Nenhum bloco nessa área.', 'info', 'bomb');
       track('bombs');
     } else {
+      if (!battle?.sendAttack({ kind: 'rubble', r, c })) return say('Recarregando o ataque…', 'info', 'timer');
       lastSent.current = Date.now();
-      battle?.sendAttack({ kind: 'rubble', r, c });
       play('attackSend');
+      haptic('medium');
       track('attacks');
-      say('Bomba de entulho lançada!', 'ok', '☄️');
+      say('Entulho lançado!', 'ok', 'meteor');
     }
+    void consume(id).then((err) => err && say(err, 'error', 'close'));
+  };
+
+  // ------------------------------------------------------------- arrastar bomba / entulho
+  const DRAG_LIFT = cell * 1.1; // o alvo fica acima do dedo para não ser escondido por ele
+  const aimFor = (x: number, y: number) => {
+    const ox = origins.current.board.x;
+    const oy = origins.current.board.y;
+    const fr = (y - DRAG_LIFT - oy) / cell - 0.5;
+    const fc = (x - ox) / cell - 0.5;
+    if (fr < -1 || fc < -1 || fr > N || fc > N) return null; // fora do tabuleiro
+    return clampAim(fr, fc);
+  };
+  const itemDragRef = useRef(itemDrag);
+  itemDragRef.current = itemDrag;
+  const lastAimKey = useRef('');
+  const chipDrag: ChipDrag = {
+    canDrag: (id) => (id === 'bomb' || id === 'rubble') && !locked && !!state,
+    onStart: (id, x, y) => {
+      if (id === 'rubble' && (!battle?.opp?.grid || Date.now() - lastSent.current < ATTACK_COOLDOWN_MS)) {
+        say(!battle?.opp?.grid ? 'Ainda não vimos o tabuleiro do rival.' : 'Recarregando o ataque…', 'info', 'timer');
+        return;
+      }
+      setSelectedPiece(null);
+      lastAimKey.current = '';
+      void remeasure();
+      play('pick');
+      haptic('light');
+      setItemDrag({ id: id as 'bomb' | 'rubble', x, y });
+    },
+    onMove: (x, y) => {
+      if (!itemDragRef.current) return;
+      const a = aimFor(x, y);
+      const key = a ? `${a.r},${a.c}` : '';
+      if (key && key !== lastAimKey.current) haptic([6]); // "clique" a cada casa nova
+      lastAimKey.current = key;
+      setItemDrag((d) => (d ? { ...d, x, y } : d));
+    },
+    onEnd: (x, y) => {
+      const d = itemDragRef.current;
+      setItemDrag(null);
+      if (!d) return;
+      const a = aimFor(x, y);
+      if (!a) return say(d.id === 'bomb' ? 'Solte a bomba em cima do tabuleiro.' : 'Solte em cima do tabuleiro do rival.', 'info', 'hand');
+      fireItem(d.id, a.r, a.c);
+    },
+    onCancel: () => setItemDrag(null),
   };
 
   const ids: PowerupId[] = ['boost_x2', 'bomb', 'reroll', 'undo'];
   const chips: PowerChip[] = ids.map((id) => ({
     id,
-    icon: itemById(id)?.icon ?? '?',
+    icon: ITEM_ICON[id],
     label: SHORT[id],
     count: have(id),
     tone: TONES[id],
@@ -355,7 +470,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   }));
   const attackChips: PowerChip[] = ATTACK_IDS.map((id) => ({
     id,
-    icon: itemById(id)?.icon ?? '?',
+    icon: ITEM_ICON[id],
     label: SHORT[id],
     count: have(id),
     tone: TONES[id],
@@ -363,7 +478,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   }));
   const rescues: RescueOption[] = (['shield', 'reroll', 'bomb', 'undo'] as PowerupId[])
     .filter((id) => id !== 'undo' || canUndo)
-    .map((id) => ({ id, icon: itemById(id)?.icon ?? '?', label: SHORT[id], count: have(id) }));
+    .map((id) => ({ id, icon: ITEM_ICON[id], label: SHORT[id], count: have(id) }));
 
   // ------------------------------------------------------------- arrastar e soltar
   const gridRef = useRef<ViewHandle>(null);
@@ -448,7 +563,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     const spot = snapPlacement(state.grid, piece, Math.round(y / cell - rows / 2), Math.round(x / cell - cols / 2));
     if (!spot) {
       play('invalid');
-      return say('Não cabe aí. Tente outra casa.', 'info', '🚫');
+      return say('Não cabe aí. Tente outra casa.', 'info', 'close');
     }
     place(selectedPiece, spot.r, spot.c);
     setSelectedPiece(null);
@@ -486,6 +601,15 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       haptic(fx.lines >= 2 || fx.combo >= 2 ? 'heavy' : 'medium');
     }
   }, [fx]);
+  // Jogada grande (2+ linhas, combo 3+ ou perfeito): borda da tela acende em neon por um instante.
+  const crit = useRef(new Animated.Value(0)).current;
+  const [critTone, setCritTone] = useState<string>(NEON.cyan);
+  useEffect(() => {
+    if (!fx || fx.kind !== 'clear' || !(fx.lines >= 2 || fx.combo >= 3 || fx.perfect)) return;
+    setCritTone(fx.perfect ? NEON.pink : fx.lines >= 3 || fx.combo >= 4 ? NEON.gold : NEON.cyan);
+    crit.setValue(1);
+    Animated.timing(crit, { toValue: 0, duration: 520, easing: Easing.out(Easing.quad), useNativeDriver: USE_NATIVE_DRIVER }).start();
+  }, [fx, crit]);
   const overNow = state?.status === 'over';
   useEffect(() => {
     if (overNow) {
@@ -516,13 +640,13 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       setFrozen(true);
       setSelectedPiece(null);
       setDrag(null);
-      say(`${a.from} congelou sua bandeja!`, 'error', '❄️');
+      say(`${a.from} congelou sua bandeja!`, 'error', 'snowflake');
     } else {
       const n = receiveAttack(a);
       say(
         a.kind === 'garbage' ? `${a.from} jogou ${n} blocos de lixo em você!` : `${a.from} lançou uma bomba de entulho!`,
         'error',
-        a.kind === 'garbage' ? '🧱' : '☄️',
+        a.kind === 'garbage' ? 'wall' : 'meteor',
       );
     }
   }, [incoming, ack, state, matchLocked, receiveAttack, flashHit, say]);
@@ -543,7 +667,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
     if (n > 0 && sendAttack({ kind: 'garbage', n }, true)) {
       play('attackSend');
       track('attacks');
-      say(`Combo! ${n} blocos de lixo no rival`, 'ok', '⚔️');
+      say(`Combo! ${n} blocos de lixo no rival`, 'ok', 'swords');
     }
   }, [fx, sendAttack, matchLocked, say]);
 
@@ -576,6 +700,14 @@ export function GameScreen({ mode, onExit, battle }: Props) {
   const frameTone = boost > 0 ? NEON.gold : combo >= 2 ? '#fb923c' : theme.frameTop;
   const anySelected = selectedPiece !== null && !!state.pieces[selectedPiece];
 
+  // Mira da bomba/entulho sendo arrastado
+  const aimNow = itemDrag ? aimFor(itemDrag.x, itemDrag.y) : null;
+  const zoneOf = (a: { r: number; c: number } | null) => new Set(a ? area3(a.r, a.c).map(([r, c]) => `${r},${c}`) : []);
+  const blastZone = itemDrag?.id === 'bomb' ? zoneOf(aimNow) : EMPTY_SET;
+  const rubbleZone = itemDrag?.id === 'rubble' ? zoneOf(aimNow) : EMPTY_SET;
+  const socket = alpha(theme.frameTop, 0.085);
+  const socketEdge = alpha(theme.frameTop, 0.16);
+
   // ------------------------------------------------------------- peças da UI
   const board = (
     <Animated.View style={{ transform: [{ translateX: shake }] }}>
@@ -605,49 +737,50 @@ export function GameScreen({ mode, onExit, battle }: Props) {
             <View key={r} style={styles.row}>
               {row.map((v, c) => {
                 const k = `${r},${c}`;
-                const isGhost = ghost.has(k);
                 const lineHit = previewLines.rows.has(r) || previewLines.cols.has(c);
                 return (
-                  <View key={c} style={{ width: cell, height: cell }}>
-                    <View
-                      style={[
-                        styles.slotCell,
-                        {
-                          borderRadius: cell * 0.22,
-                          backgroundColor: alpha(theme.frameTop, 0.085),
-                          borderColor: alpha(theme.frameTop, 0.16),
-                        },
-                      ]}
-                    />
-                    {v !== null ? (
-                      poppedCells.has(k) && placed ? (
-                        <PopIn key={`p${placed.id}`} size={cell}>
-                          <Block color={v} size={cell} />
-                        </PopIn>
-                      ) : (
-                        <Block color={v} size={cell} />
-                      )
-                    ) : isGhost && dragged ? (
-                      <Block color={dragged.color} size={cell} ghost />
-                    ) : null}
-                    {lineHit && (
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.lineHit,
-                          {
-                            borderRadius: cell * 0.22,
-                            borderColor: dragged ? BLOCK_COLORS[dragged.color] : NEON.gold,
-                            opacity: hintPulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }),
-                          },
-                        ]}
-                      />
-                    )}
-                  </View>
+                  <BoardCell
+                    key={c}
+                    v={v}
+                    size={cell}
+                    ghost={v === null && ghost.has(k) && dragged ? dragged.color : null}
+                    lineTone={lineHit ? (dragged ? BLOCK_COLORS[dragged.color] : NEON.gold) : null}
+                    aimTone={blastZone.has(k) ? (v !== null ? '#fb923c' : 'rgba(251,146,60,0.35)') : null}
+                    popId={poppedCells.has(k) && placed ? placed.id : null}
+                    socket={socket}
+                    socketEdge={socketEdge}
+                    pulse={hintPulse}
+                  />
                 );
               })}
             </View>
           ))}
+          {/* Arrastando o entulho: o tabuleiro do rival aparece no lugar do seu enquanto você mira. */}
+          {itemDrag?.id === 'rubble' && battle?.opp?.grid && (
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.oppOverlay]}>
+              {battle.opp.grid.map((row, r) => (
+                <View key={r} style={styles.row}>
+                  {row.map((v, c) => (
+                    <BoardCell
+                      key={c}
+                      v={v}
+                      size={cell}
+                      ghost={null}
+                      lineTone={null}
+                      aimTone={rubbleZone.has(`${r},${c}`) ? (v === null ? NEON.violet : 'rgba(167,139,250,0.35)') : null}
+                      popId={null}
+                      socket="rgba(167,139,250,0.10)"
+                      socketEdge="rgba(167,139,250,0.22)"
+                      pulse={hintPulse}
+                    />
+                  ))}
+                </View>
+              ))}
+              <View style={styles.oppLabel}>
+                <Text style={styles.oppLabelText}>Tabuleiro de {battle.opp.name}</Text>
+              </View>
+            </View>
+          )}
           <FloatScore placed={fx && placed && fx.id === placed.id ? null : placed} cell={cell} />
           <ClearEffects fx={fx} cell={cell} boardSize={boardSize} fxStyle={profile?.effect ?? DEFAULT_FX} />
         </View>
@@ -734,9 +867,10 @@ export function GameScreen({ mode, onExit, battle }: Props) {
       minSize={40}
       gap={5}
       divideAfter={chips.length}
+      drag={chipDrag}
     />
   ) : (
-    <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={shortScreen} slots={5} />
+    <PowerBar chips={chips} onUse={applyItem} onShop={() => setShopOpen(true)} width={barW} compact={shortScreen} slots={5} drag={chipDrag} />
   );
 
   const battleOver = battle && state.status === 'over' && !locked;
@@ -783,6 +917,30 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         </View>
       )}
 
+      {itemDrag && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.itemGhost,
+            {
+              left: itemDrag.x - 30 - origins.current.root.x,
+              top: itemDrag.y - DRAG_LIFT - 30 - origins.current.root.y,
+              borderColor: itemDrag.id === 'bomb' ? '#fb923c' : NEON.violet,
+              shadowColor: itemDrag.id === 'bomb' ? '#fb923c' : NEON.violet,
+            },
+          ]}
+        >
+          <Icon name={itemDrag.id === 'bomb' ? 'bomb' : 'meteor'} size={32} color={itemDrag.id === 'bomb' ? '#fdba74' : '#c4b5fd'} glow />
+          {aimNow && (
+            <Text style={styles.itemGhostText}>
+              {itemDrag.id === 'bomb'
+                ? `${area3(aimNow.r, aimNow.c).filter(([r, c]) => state.grid[r][c] !== null).length} blocos`
+                : 'soltar!'}
+            </Text>
+          )}
+        </View>
+      )}
+
       {drag && dragged && (
         <View
           pointerEvents="none"
@@ -825,7 +983,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
               {rescues
                 .filter((r) => r.count > 0)
                 .map((r) => (
-                  <Pressable key={r.id} style={styles.waitBtn} onPress={() => applyItem(r.id)} accessibilityRole="button">
+                  <Pressable key={r.id} style={styles.waitBtn} onPress={() => applyItem(r.id, { auto: true })} accessibilityRole="button">
                     <Text style={styles.waitBtnText}>
                       {r.icon} {r.label} ({r.count})
                     </Text>
@@ -840,19 +998,15 @@ export function GameScreen({ mode, onExit, battle }: Props) {
         </View>
       )}
 
-      <Toast msg={toast} />
-      <AimBoard
-        visible={aim !== null}
-        mode={aim ?? 'blast'}
-        grid={aim === 'rubble' ? (battle?.opp?.grid ?? null) : state.grid}
-        title={aim === 'rubble' ? `☄️ Mire em ${battle?.opp?.name ?? 'rival'}` : '💣 Onde explodir?'}
-        onCancel={() => setAim(null)}
-        onConfirm={fireAim}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.crit, { borderColor: critTone, shadowColor: critTone, opacity: crit }]}
       />
+      <Toast msg={toast} />
 
       {mode === 'solo' && (
         <GameOverModal
-          visible={state.status === 'over' && !shopOpen && !aim}
+          visible={state.status === 'over' && !shopOpen && !itemDrag}
           score={state.score}
           prevBest={startBest}
           coins={coinsForScore(state.score)}
@@ -862,7 +1016,7 @@ export function GameScreen({ mode, onExit, battle }: Props) {
           onRestart={restartGame}
           onMenu={exit}
           rescues={rescues}
-          onRescue={applyItem}
+          onRescue={(id) => applyItem(id, { auto: true })}
         />
       )}
       <ShopModal visible={shopOpen} onClose={() => setShopOpen(false)} initialTab="powerups" />
@@ -897,6 +1051,7 @@ const styles = StyleSheet.create({
     bottom: 2,
     borderWidth: 1,
   },
+  aimHit: { position: 'absolute', left: 1, top: 1, right: 1, bottom: 1, borderWidth: 2.5 },
   lineHit: {
     position: 'absolute',
     left: 1,
@@ -982,6 +1137,32 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   link: { color: 'rgba(148,163,184,0.85)', fontSize: 12, textDecorationLine: 'underline' },
+  crit: { ...StyleSheet.absoluteFill, borderWidth: 6, borderRadius: 4, shadowOpacity: 1, shadowRadius: 30, zIndex: 45 },
+  oppOverlay: { backgroundColor: 'rgba(14,8,34,0.94)', borderRadius: 10 },
+  oppLabel: {
+    position: 'absolute',
+    top: -14,
+    alignSelf: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: NEON.violet,
+  },
+  oppLabelText: { color: '#1e1b4b', fontSize: 11, fontWeight: '900' },
+  itemGhost: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,16,34,0.92)',
+    shadowOpacity: 0.9,
+    shadowRadius: 16,
+    zIndex: 60,
+  },
+  itemGhostText: { position: 'absolute', bottom: -18, color: '#fff', fontSize: 11, fontWeight: '900', textShadowColor: '#000', textShadowRadius: 4 },
   attackRow: { alignItems: 'center', gap: 4 },
   attackLabel: { color: '#fda4af', fontSize: 9.5, fontWeight: '900', letterSpacing: 2 },
   ice: {

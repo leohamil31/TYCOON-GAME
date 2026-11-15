@@ -369,3 +369,14 @@ export const garbageFor = (lines: number, combo: number): number => {
   const base = lines >= 4 ? 6 : lines === 3 ? 4 : lines === 2 ? 2 : 0;
   return base + (combo >= 3 ? 2 : 0);
 };
+
+/** Centro 3x3 que mais destrói blocos (usado no resgate automático da bomba). */
+export const bestBlast = (grid: Grid): { r: number; c: number; n: number } => {
+  let best = { r: 4, c: 4, n: 0 };
+  for (let r = 1; r < N - 1; r++)
+    for (let c = 1; c < N - 1; c++) {
+      const n = area3(r, c).filter(([rr, cc]) => grid[rr][cc] !== null).length;
+      if (n > best.n) best = { r, c, n };
+    }
+  return best;
+};

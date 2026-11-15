@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { haptic, play } from '../services/sfx';
 import { useProgress } from '../state/useProgress';
-import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
 
 /** Comemoração "NÍVEL N! +1 baú" que aparece por cima de qualquer tela ao subir de nível. */
 export function LevelUpBanner() {
@@ -37,7 +37,7 @@ export function LevelUpBanner() {
       ]}
     >
       <Pressable onPress={clearLevelUp} style={[styles.card, glassStrong, { backgroundColor: 'rgba(30,27,75,0.96)' }]}>
-        <Text style={styles.big}>⬆️ NÍVEL {levelUp}!</Text>
+        <Text style={[styles.big, FONT_DISPLAY]}>⬆️ NÍVEL {levelUp}!</Text>
         <Text style={styles.sub}>Você ganhou 1 baú 🎁 — abra no menu</Text>
       </Pressable>
     </Animated.View>

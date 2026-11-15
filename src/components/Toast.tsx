@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text } from 'react-native';
 import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER } from '../theme';
+import { Icon } from './icons/Icon';
+import { isIconName } from './icons/data';
 
 export interface ToastMsg {
   id: number;
@@ -43,8 +45,9 @@ function ToastImpl({ msg }: { msg: ToastMsg }) {
         },
       ]}
     >
+      {msg.icon && isIconName(msg.icon) ? <Icon name={msg.icon} size={16} color={tone} glow /> : null}
       <Text style={[styles.text, { color: tone === NEON.cyan ? '#e0f2fe' : tone }]}>
-        {msg.icon ? `${msg.icon}  ` : ''}
+        {msg.icon && !isIconName(msg.icon) ? `${msg.icon}  ` : ''}
         {msg.text}
       </Text>
     </Animated.View>
@@ -53,6 +56,9 @@ function ToastImpl({ msg }: { msg: ToastMsg }) {
 
 const styles = StyleSheet.create({
   toast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     position: 'absolute',
     top: 8,
     alignSelf: 'center',

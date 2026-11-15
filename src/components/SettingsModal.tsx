@@ -37,7 +37,7 @@ export function SettingsModal({ visible, onClose, onOpenShop }: Props) {
   };
 
   return (
-    <GlassModal visible={visible} onClose={onClose} title="CONFIGURAÇÕES" icon="⚙️" iconMotion="spin" tone={NEON.violet}>
+    <GlassModal visible={visible} onClose={onClose} title="CONFIGURAÇÕES" icon="settings" iconMotion="spin" tone={NEON.violet}>
       {mode === 'local' && <Banner text="Modo demonstração: dados salvos só neste aparelho." />}
       {msg && <Banner text={msg.text} kind={msg.kind} />}
       <Text style={styles.label}>NOME DO JOGADOR</Text>

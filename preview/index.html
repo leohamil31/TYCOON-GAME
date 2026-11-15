@@ -9,10 +9,17 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Tycoon Game" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <title>Tycoon Game</title>
     <style>
       html, body, #root { height: 100%; margin: 0; background: #020617; overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; }
       #root { width: 100%; margin: 0 auto; display: flex; height: 100dvh; }
+      /* Fonte da interface (os títulos definem a própria fonte em linha e têm prioridade). */
+      #root, #root div, #root span, #root input { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+      /* Lilita One só tem um peso: sem negrito falso (se ela não carregar, o fallback fica em negrito de verdade). */
+      #root * { font-synthesis: none; }
     </style>
   </head>
   <body>

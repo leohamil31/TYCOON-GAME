@@ -13,6 +13,7 @@ import {
 import { COLORS } from '../constants';
 import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER } from '../theme';
 import { AnimatedIcon, type Motion } from './AnimatedIcon';
+import { haptic, play } from '../services/sfx';
 
 interface ModalProps {
   visible: boolean;
@@ -56,7 +57,7 @@ export function GlassModal({ visible, title, icon, iconMotion = 'float', tone = 
           ]}
         >
           <View style={styles.head}>
-            <AnimatedIcon glyph={icon} size={26} motion={iconMotion} />
+            <AnimatedIcon glyph={icon} color={tone} glow size={26} motion={iconMotion} />
             <Text style={[styles.title, { textShadowColor: alpha(tone, 0.8) }]}>{title}</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.close} accessibilityLabel="Fechar">
               <Text style={styles.closeX}>✕</Text>
@@ -112,7 +113,11 @@ export function ActionButton({ label, onPress, tone = NEON.cyan, disabled, ghost
         setHover(false);
         to(1);
       }}
-      onPressIn={() => to(0.95)}
+      onPressIn={() => {
+        to(0.94);
+        play('tap');
+        haptic('light');
+      }}
       onPressOut={() => to(hover ? 1.05 : 1)}
       accessibilityRole="button"
       accessibilityState={{ disabled: off }}

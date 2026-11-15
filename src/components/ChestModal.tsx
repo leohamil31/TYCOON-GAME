@@ -5,7 +5,7 @@ import { itemById } from '../shop/catalog';
 import type { ChestReward } from '../shop/types';
 import { useProfile } from '../state/useProfile';
 import { useProgress } from '../state/useProgress';
-import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER } from '../theme';
+import { alpha, glassStrong, NEON, USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
 import { Confetti } from './Confetti';
 
 type Phase = 'ready' | 'opening' | 'reveal';
@@ -89,7 +89,7 @@ export function ChestModal({ visible, onClose }: { visible: boolean; onClose: ()
       <View style={styles.backdrop}>
         {phase === 'reveal' && <Confetti count={info?.rare ? 60 : 30} loops={1} />}
         <View style={[styles.card, glassStrong, { borderColor: alpha(tone, 0.7) }]}>
-          <Text style={styles.title}>{phase === 'reveal' ? (info?.rare ? 'RARO!' : 'VOCÊ GANHOU') : 'BAÚ DE NÍVEL'}</Text>
+          <Text style={[styles.title, FONT_DISPLAY]}>{phase === 'reveal' ? (info?.rare ? 'RARO!' : 'VOCÊ GANHOU') : 'BAÚ DE NÍVEL'}</Text>
 
           <View style={styles.stage}>
             <Animated.View
@@ -133,7 +133,7 @@ export function ChestModal({ visible, onClose }: { visible: boolean; onClose: ()
 
           {phase === 'reveal' && info ? (
             <Animated.View style={{ alignItems: 'center', opacity: show }}>
-              <Text style={[styles.reward, { color: tone }]}>{info.title}</Text>
+              <Text style={[styles.reward, FONT_DISPLAY, { color: tone }]}>{info.title}</Text>
               <Text style={styles.sub}>{info.sub}</Text>
             </Animated.View>
           ) : (

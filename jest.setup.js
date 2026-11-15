@@ -30,3 +30,9 @@ jest.mock('react-native-iap', () => ({
 }));
 // Testes não falam com o servidor: força o modo demonstração.
 jest.mock('./src/services/supabase', () => ({ supabase: null, SUPABASE_URL: '', SUPABASE_KEY: '', ensureSession: async () => {} }));
+// Ícones vetoriais: no Node basta renderizar contêineres vazios.
+jest.mock('react-native-svg', () => {
+  const React = require('react');
+  const C = (props) => React.createElement('View', props, props.children);
+  return { __esModule: true, default: C, Svg: C, Path: C, Circle: C, Rect: C, Line: C };
+});

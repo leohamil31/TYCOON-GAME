@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { NEON, USE_NATIVE_DRIVER } from '../theme';
+import { NEON, USE_NATIVE_DRIVER, FONT_DISPLAY } from '../theme';
 import { Block } from './Piece';
 
 interface FloatingCubeProps {
@@ -80,8 +80,8 @@ export function TitleLogo({ compact }: { compact?: boolean }) {
       <FloatingCube color={4} size={26} left={26} bottom={2} duration={2400} delay={600} />
       <FloatingCube color={3} size={22} right={22} bottom={8} duration={2000} delay={900} />
       <Animated.View style={{ alignItems: 'center', opacity: flicker }}>
-        <Text style={[styles.tycoon, { fontSize: big, lineHeight: big * 1.1 }]}>TYCOON</Text>
-        <Text style={[styles.game, { fontSize: small, lineHeight: small * 1.2 }]}>GAME</Text>
+        <Text style={[styles.tycoon, FONT_DISPLAY, { fontSize: big, lineHeight: big * 1.1 }]}>TYCOON</Text>
+        <Text style={[styles.game, FONT_DISPLAY, { fontSize: small, lineHeight: small * 1.2 }]}>GAME</Text>
       </Animated.View>
     </View>
   );

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { alpha, glass, gradient, PALETTE, USE_NATIVE_DRIVER } from '../theme';
 import { AnimatedIcon, type Motion } from './AnimatedIcon';
+import { haptic, play } from '../services/sfx';
 
 interface Props {
   title: string;
@@ -95,7 +96,11 @@ export function GlassButton({
           setHover(false);
           to(1);
         }}
-        onPressIn={() => to(0.96)}
+        onPressIn={() => {
+          to(0.95);
+          play('tap');
+          haptic('light');
+        }}
         onPressOut={() => to(hover ? 1.035 : 1)}
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
         style={[
@@ -118,7 +123,7 @@ export function GlassButton({
         )}
         {icon && (
           <View style={[styles.iconWrap, { backgroundColor: alpha(tone, 0.28) }]}>
-            <AnimatedIcon glyph={icon} size={compact ? 22 : 28} motion={iconMotion} speed={1500} />
+            <AnimatedIcon glyph={icon} color={tone} glow size={compact ? 22 : 28} motion={iconMotion} speed={1500} />
           </View>
         )}
         <View style={styles.texts}>

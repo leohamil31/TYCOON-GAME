@@ -75,3 +75,9 @@ export const IS_ANDROID = Platform.OS === 'android';
 
 /** Texto sem o "respiro" extra de fonte do Android (centraliza emojis e números). */
 export const tightText = IS_ANDROID ? ({ includeFontPadding: false, textAlignVertical: 'center' } as const) : {};
+
+/**
+ * Tipografia. Web: Plus Jakarta Sans na interface (preview/index.html) e Lilita One (estilo arcade) nos
+ * títulos e números grandes. No app nativo fica a fonte do sistema até os arquivos de fonte serem incluídos.
+ */
+export const FONT_DISPLAY = Platform.OS === 'web' ? ({ fontFamily: '"Lilita One", "Plus Jakarta Sans", system-ui, sans-serif', fontWeight: '900' } as const) : {};

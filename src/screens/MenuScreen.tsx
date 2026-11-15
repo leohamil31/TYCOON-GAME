@@ -54,10 +54,10 @@ export function MenuScreen({ onSolo, onOnline, onChallenge }: Props) {
 
   const nav = useMemo<NavItem[]>(
     () => [
-      { key: 'play', label: 'Jogar', icon: '🎮', tone: NEON.green, onPress: onSolo },
-      { key: 'shop', label: 'Loja', icon: '🛒', tone: NEON.gold, onPress: () => setShop(true) },
-      { key: 'friends', label: 'Amigos', icon: '👥', tone: NEON.cyan, onPress: () => setFriendsOpen(true) },
-      { key: 'settings', label: 'Ajustes', icon: '⚙️', tone: NEON.violet, onPress: () => setSettings(true) },
+      { key: 'play', label: 'Jogar', icon: 'gamepad', tone: NEON.green, onPress: onSolo },
+      { key: 'shop', label: 'Loja', icon: 'cart', tone: NEON.gold, onPress: () => setShop(true) },
+      { key: 'friends', label: 'Amigos', icon: 'users', tone: NEON.cyan, onPress: () => setFriendsOpen(true) },
+      { key: 'settings', label: 'Ajustes', icon: 'settings', tone: NEON.violet, onPress: () => setSettings(true) },
     ],
     [onSolo],
   );
@@ -99,12 +99,12 @@ export function MenuScreen({ onSolo, onOnline, onChallenge }: Props) {
           >
             <TitleLogo compact={height < 700} />
             <View style={styles.buttons}>
-              <GlassButton title="Jogar Offline" subtitle="Modo solo clássico" icon="🎮" tone={NEON.green} delay={150} pulse onPress={onSolo} />
+              <GlassButton title="Jogar Offline" subtitle="Modo solo clássico" icon="gamepad" tone={NEON.green} delay={150} pulse onPress={onSolo} />
               <View style={{ height: 14 }} />
               <GlassButton
                 title="Batalha Online"
                 subtitle="Crie uma sala e desafie um amigo"
-                icon="⚔️"
+                icon="swords"
                 tone={NEON.pink}
                 delay={300}
                 onPress={onOnline}

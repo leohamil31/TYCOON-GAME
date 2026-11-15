@@ -101,7 +101,7 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
             </Pressable>
 
             <View style={styles.headRow}>
-              <AnimatedIcon glyph="⚔️" size={34} motion="wiggle" speed={1400} />
+              <AnimatedIcon glyph="swords" color={NEON.pink} glow size={34} motion="wiggle" speed={1400} />
               <Text style={styles.heading}>BATALHA ONLINE</Text>
             </View>
 
@@ -130,7 +130,7 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
                 <GlassButton
                   title="Criar sala"
                   subtitle="Gere um código e convide um amigo"
-                  icon="🏠"
+                  icon="home"
                   tone={NEON.cyan}
                   disabled={busy}
                   onPress={() => onCreate(commitName())}
@@ -152,7 +152,7 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
                 </View>
                 <GlassButton
                   title="Entrar na sala"
-                  icon="🔑"
+                  icon="key"
                   tone={NEON.pink}
                   disabled={busy || joinCode.length !== 5}
                   delay={120}
@@ -211,7 +211,7 @@ export function LobbyScreen({ phase, role, code, error, me, opp, onCreate, onJoi
                   <GlassButton
                     title="Iniciar batalha"
                     subtitle={opp ? '2 minutos • maior pontuação vence' : 'Espere seu amigo entrar'}
-                    icon="🚀"
+                    icon="rocket"
                     tone={NEON.green}
                     disabled={!opp}
                     onPress={onStart}

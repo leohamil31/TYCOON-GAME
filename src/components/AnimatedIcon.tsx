@@ -1,11 +1,18 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
 import { tightText, USE_NATIVE_DRIVER } from '../theme';
+import { Icon } from './icons/Icon';
+import { isIconName } from './icons/data';
 
 export type Motion = 'float' | 'pulse' | 'spin' | 'wiggle';
 
 interface Props {
+  /** Nome de um ícone vetorial (ver icons/data.ts) ou um emoji (só em contextos festivos). */
   glyph: string;
+  /** Cor do ícone vetorial. */
+  color?: string;
+  /** Brilho neon (web). */
+  glow?: boolean;
   size?: number;
   motion?: Motion;
   /** When false the icon rests. */
@@ -19,6 +26,8 @@ interface Props {
 /** Emoji icon with a looping CSS-like animation (float, pulse, spin, wiggle). Runs at 60fps on the native driver. */
 export function AnimatedIcon({
   glyph,
+  color = '#e2e8f0',
+  glow,
   size = 24,
   motion = 'float',
   active = true,
@@ -58,6 +67,14 @@ export function AnimatedIcon({
         : motion === 'spin'
           ? [{ rotate: t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }]
           : [{ rotate: t.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '12deg'] }) }];
+
+  if (isIconName(glyph)) {
+    return (
+      <Animated.View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform }, style]}>
+        <Icon name={glyph} size={size} color={color} glow={glow} />
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.Text style={[{ fontSize: size, lineHeight: size * 1.2, textAlign: 'center', transform }, tightText, style as object]}>
